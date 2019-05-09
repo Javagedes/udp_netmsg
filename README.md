@@ -1,9 +1,9 @@
-###Usage
+### Usage
 If you're looking to easily send and receive Udp Messages then this crate is perfect for you. 
 It gives you the ability to define your own Net Messages by simply creating a struct
 and implementing a trait.
 
-###Important to note:
+### Important to note:
 - This crate will automatically add a message id to the head of the udp datagram. the header id is 
 defined in the fn id() function(e.g. it sends [header_id,everything_else]. 
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
@@ -12,11 +12,14 @@ as it uses vectors as a buffer. In my light testing, sending/receiving max size 
 - This crate is designed to send datagrams in BigEndian. You decide how the buffer of data is built,
 but the 4bytes of header is always as u32 BigEndian
 - The recv method returns a trait object *Message*, but you are able to downcast the message 
-back to the original struct (see example below).
+back to the original struct (see example below)
+- Currently the only ip address for receiving is 0.0.0.0, but you can define the port
+- Currently can only send datagrams to a single ip/port
+
 
 If you have any suggestions for this crate, let me know! If something is not clear or confusing, let me know!
 
-###Example
+### Example
 ```rust
 use udp_netmsg::{NetMessenger, Message};
 use std::io::Cursor;
