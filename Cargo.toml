@@ -9,7 +9,7 @@ repository = "https://github.com/Javagedes/udp_netmsg"
 homepage = "https://github.com/Javagedes/udp_netmsg"
 readme = "README.md"
 categories = ["encoding", "parsing","Communication Protocol", "User Datagram Protocol"]
-keywords = ["byte", "UDP", "big-endian", "Network Message", "Abstraction"]
+keywords = ["byte", "udp", "big-endian", "network-message", "abstraction"]
 
 [dependencies]
 byteorder = "1.3.1"
