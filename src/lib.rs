@@ -7,7 +7,6 @@ use std::io::Cursor;
 use std::string::ToString;
 
 pub trait Message: Downcast {
-    fn display(&self);
     fn from_buffer(buffer: Cursor<Vec<u8>>)->Box<Message> where Self: Sized; // return Self not Message
     fn to_buffer(&self)->Vec<u8>;
     fn id()->u32 where Self: Sized;
@@ -59,13 +58,17 @@ impl NetMessenger {
 
 //        let buffer = buffer[..num_bytes].to_vec();
         buffer.resize(num_bytes,0);
+        if blocking {self.udp.set_nonblocking(true).unwrap();}
 
         let mut rdr = Cursor::new(buffer);
         let id = rdr.read_u32::<BigEndian>().unwrap();
-        let func = *self.con_map.get(&id).unwrap();
+        match self.con_map.get(&id) {
+            Some(func) => {return Some(func(rdr));}
+            None => {println!("unknown msg id: {}", id); return None}
+        }
 
-        if blocking {self.udp.set_nonblocking(true).unwrap();}
-        return Some(func(rdr));
+
+
     }
 
     pub fn send<T: Message>(&self, msg: Box<T>)->Result<(),String> {
