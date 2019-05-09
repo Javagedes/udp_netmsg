@@ -1,9 +1,9 @@
 ###Usage
-If you're looking to easily send Udp Messages then this crate is perfect for you. 
+If you're looking to easily send and receive Udp Messages then this crate is perfect for you. 
 It gives you the ability to define your own Net Messages by simply creating a struct
 and implementing a trait.
 
-####Important to note:
+###Important to note:
 - This crate will automatically add a message id to the head of the udp datagram. the header id is 
 defined in the fn id() function(e.g. it sends [HEADER_ID,EVERYTHING_ELSE]. 
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
