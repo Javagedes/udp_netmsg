@@ -5,7 +5,7 @@ and implementing a trait.
 
 ###Important to note:
 - This crate will automatically add a message id to the head of the udp datagram. the header id is 
-defined in the fn id() function(e.g. it sends [HEADER_ID,EVERYTHING_ELSE]. 
+defined in the fn id() function(e.g. it sends [header_id,everything_else]. 
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
 as it uses vectors as a buffer. In my light testing, sending/receiving max size udp datagrams
 (65k bytes), it is about 30% slower than if you were to use an array.
