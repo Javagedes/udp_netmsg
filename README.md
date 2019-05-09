@@ -4,24 +4,25 @@ It gives you the ability to define your own Net Messages by simply creating a st
 and implementing a trait.
 
 ### Important to note:
-- This crate will automatically add a message id to the head of the udp datagram. the header id is 
-defined in the fn id() function(e.g. it sends [header_id,everything_else]. 
+- This crate will automatically add the user defined header to the front of the datagram. the header id is 
+defined in the fn id() function
+- It can optionally include payload length (u32), can be important for target application implementation
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
 as it uses vectors as a buffer. In my light testing, sending/receiving max size udp datagrams
 (65k bytes), it is about 30% slower than if you were to use an array.
 - This crate is designed to send datagrams in BigEndian. You decide how the buffer of data is built,
-but the 4bytes of header is always as u32 BigEndian
+but the 4bytes of header is always as u32 BigEndian. I plan on changing this!
 - The recv method returns a trait object *Message*, but you are able to downcast the message 
-back to the original struct (see example below)
-- Currently the only ip address for receiving is 0.0.0.0, but you can define the port
+back to the original struct (see example below). I hope to simplify this!
 - Currently can only send datagrams to a single ip/port
+- If the buffer does not contain enough data for the datagram, **It will crash!** I plan on fixing this soon
 
 
 If you have any suggestions for this crate, let me know! If something is not clear or confusing, let me know!
 
 ### Example
 ```rust
-use udp_netmsg::{NetMessenger, Message};
+use udp_netmsg::{NetMessenger, Datagram};
 use std::io::Cursor;
 use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
 
@@ -33,8 +34,8 @@ struct UpdatePos {
     pub z: f32
 }
 
-impl Message for UpdatePos {
-    fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Message> {
+impl Datagram for UpdatePos {
+    fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Datagram> {
         let id = buffer.read_u32::<BigEndian>().unwrap();
         let x = buffer.read_f32::<BigEndian>().unwrap();
         let y = buffer.read_f32::<BigEndian>().unwrap();
@@ -52,39 +53,42 @@ impl Message for UpdatePos {
         return wtr
     }
 
-    //header
-    fn id()->u32 {return 834227670}
+    fn header()->u32 {return 834227670}
 }
 fn main() {
-    //port: port for receiving
-    //target_ip: port for sending
-    //recv_buffer_size_bytes: size of biggest datagram to be received
+
+    let source_ip = String::from("0.0.0.0:12000");
+    let dest_ip = String::from("127.0.0.1:12000");
+    let recv_buffer_size_bytes = 30;
     let mut net_msg = NetMessenger::new(
-        String::from("12000"),
-        String::from("127.0.0.1:12000"),
-        20);
+        source_ip,
+        dest_ip,
+        recv_buffer_size_bytes);
 
-    //register the struct so it knows how to read message!
-    net_msg.register(UpdatePos::id(), UpdatePos::from_buffer);
+    //register the struct so it knows how to read datagram!
+    net_msg.register(UpdatePos::header(), UpdatePos::from_buffer);
 
-    //Sends message. Returns Ok or Err
-    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32})) {
-        Ok(_) => println!("message sent!"),
-        Err(e) => println!("message failed to send because: {}", e)
+    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32}), true) {
+        Ok(_) => println!("datagram sent!"),
+        Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    //Set blocking or not
-    //returns Some(Message) or None
-    match net_msg.recv(false) {
-        //Some(Msg: Box<Message>)
+    //msg.recv(...) returns Some(datagram) or None
+    match net_msg.recv(false, true) {
+        //Some(Msg: Box<Datagram>)
         Some(msg) => {
-            //now downcast to particular struct here
 
+            //now downcast to particular struct here
             if let Some(t) = msg.downcast_ref::<UpdatePos>() {
-                println!("id: {} at ({},{},{})", t.id, t.x, t.y, t.z);}
+                println!("Received: [id {} at ({},{},{})]", t.id, t.x, t.y, t.z);}
             //else if let Some(t) = msg.downcast_ref::<Another msg type>() {}
         }
-        None => {println!("no message received!")}
+        None => {println!("no Datagram received!")}
     }
 }
 ```
+
+### To do 
+- [ ] Check if buffer is large enough for datagram. Have it return None instead of crashing
+- [ ] Allow users to choose bigEndian or littleEndian for header / payload length
+- [ ] Simplify downcasting

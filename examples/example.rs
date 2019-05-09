@@ -1,4 +1,4 @@
-use udp_netmsg::{NetMessenger, Message};
+use udp_netmsg::{NetMessenger, Datagram};
 use std::io::Cursor;
 use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
 
@@ -10,8 +10,8 @@ struct UpdatePos {
     pub z: f32
 }
 
-impl Message for UpdatePos {
-    fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Message> {
+impl Datagram for UpdatePos {
+    fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Datagram> {
         let id = buffer.read_u32::<BigEndian>().unwrap();
         let x = buffer.read_f32::<BigEndian>().unwrap();
         let y = buffer.read_f32::<BigEndian>().unwrap();
@@ -29,39 +29,37 @@ impl Message for UpdatePos {
         return wtr
     }
 
-    //header
-    fn id()->u32 {return 834227670}
+    fn header()->u32 {return 834227670}
 }
 fn main() {
-    //port: port for receiving
-    //target_ip: port for sending
-    //recv_buffer_size_bytes: size of biggest datagram to be received
+
+    let source_ip = String::from("0.0.0.0:12000");
+    let dest_ip = String::from("127.0.0.1:12000");
+    let recv_buffer_size_bytes = 30;
     let mut net_msg = NetMessenger::new(
-        String::from("12000"),
-        String::from("127.0.0.1:12000"),
-        20);
+        source_ip,
+        dest_ip,
+        recv_buffer_size_bytes);
 
-    //register the struct so it knows how to read message!
-    net_msg.register(UpdatePos::id(), UpdatePos::from_buffer);
+    //register the struct so it knows how to read datagram!
+    net_msg.register(UpdatePos::header(), UpdatePos::from_buffer);
 
-    //Sends message. Returns Ok or Err
-    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32})) {
-        Ok(_) => println!("message sent!"),
-        Err(e) => println!("message failed to send because: {}", e)
+    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32}), true) {
+        Ok(_) => println!("datagram sent!"),
+        Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    //Set blocking or not
-    //returns Some(Message) or None
-    match net_msg.recv(false) {
-        //Some(Msg: Box<Message>)
+    //msg.recv(...) returns Some(datagram) or None
+    match net_msg.recv(false, true) {
+        //Some(Msg: Box<Datagram>)
         Some(msg) => {
-            //now downcast to particular struct here
 
+            //now downcast to particular struct here
             if let Some(t) = msg.downcast_ref::<UpdatePos>() {
-                println!("id: {} at ({},{},{})", t.id, t.x, t.y, t.z);}
+                println!("Received: [id {} at ({},{},{})]", t.id, t.x, t.y, t.z);}
             //else if let Some(t) = msg.downcast_ref::<Another msg type>() {}
         }
-        None => {println!("no message received!")}
+        None => {println!("no Datagram received!")}
     }
 }
 
