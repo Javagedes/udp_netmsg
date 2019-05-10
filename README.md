@@ -4,6 +4,7 @@ It gives you the ability to define your own Net Messages by simply creating a st
 and implementing a trait.
 
 ### Important to note:
+- **This crate is actively being worked on and interfaces may change from update to update**
 - This crate will automatically add the user defined header to the front of the datagram. the header id is 
 defined in the fn id() function
 - It can optionally include payload length (u32), can be important for target application implementation

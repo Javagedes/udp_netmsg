@@ -31,6 +31,7 @@ impl Datagram for UpdatePos {
 
     fn header()->u32 {return 834227670}
 }
+
 fn main() {
 
     let source_ip = String::from("0.0.0.0:12000");

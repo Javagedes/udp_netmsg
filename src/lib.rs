@@ -3,7 +3,7 @@ use byteorder::{BigEndian,WriteBytesExt,ReadBytesExt};
 
 use std::net::UdpSocket;
 use std::collections::HashMap;
-use std::io::Cursor;
+use std::io::{Cursor, ErrorKind};
 use std::string::ToString;
 
 /// This Trait must be implemented on any struct that you wish to use as a UDP datagram
@@ -77,7 +77,9 @@ impl NetMessenger {
         let num_bytes =  match self.udp.recv(&mut buffer){
             Ok(n) => { n },
             Err(e)=> {
-                println!("{}",e.to_string());
+                if e.kind() == ErrorKind::WouldBlock {return None}
+                else {println!("{}",e);}
+
                 return None; } //Break out of function if we received no bytes
         };
 
@@ -126,4 +128,124 @@ impl NetMessenger {
     pub fn register(&mut self, key: u32, con: fn(Cursor<Vec<u8>>)->Box<Datagram> ) {
         self.con_map.insert(key,con);
     }
+}
+
+#[cfg(test)]
+mod struct_creation {
+    use crate::{NetMessenger, Datagram};
+    use std::io::Cursor;
+    use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
+
+    #[derive(Debug)]
+    struct UpdatePos {
+        pub id: u32,
+        pub x: f32,
+        pub y: f32,
+        pub z: f32
+    }
+
+    impl Datagram for UpdatePos {
+        fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Datagram> {
+            let id = buffer.read_u32::<BigEndian>().unwrap();
+            let x = buffer.read_f32::<BigEndian>().unwrap();
+            let y = buffer.read_f32::<BigEndian>().unwrap();
+            let z = buffer.read_f32::<BigEndian>().unwrap();
+            return Box::new(UpdatePos{id,x,y,z})
+        }
+
+        fn to_buffer(&self)->Vec<u8> {
+            let mut wtr: Vec<u8> = Vec::new();
+            //this buffer is 16 + 4 more for the header
+            wtr.write_u32::<BigEndian>(self.id).unwrap();
+            wtr.write_f32::<BigEndian>(self.x).unwrap();
+            wtr.write_f32::<BigEndian>(self.y).unwrap();
+            wtr.write_f32::<BigEndian>(self.z).unwrap();
+            return wtr
+        }
+
+        fn header()->u32 {return 834227670}
+    }
+
+    #[test]
+    fn correct_source_dest() {
+        let net_msg = NetMessenger::new(
+            String::from("0.0.0.0:12000"),
+            String::from("127.0.0.1:12000"),
+            50,
+        );
+
+        assert_eq!(net_msg.send(
+            Box::from(UpdatePos{id:15, x: 15f32, y: 15f32, z:15f32}),
+            true).unwrap(), ());
+    }
+
+    #[test]
+    #[should_panic]
+    fn incorrect_source() {
+        NetMessenger::new(
+            String::from("12000"),
+            String::from("127.0.0.1:12000"),
+            50,
+        );
+    }
+
+    #[test]
+    fn incorrect_dest() {
+        let net_msg = NetMessenger::new(
+            String::from("0.0.0.0:12001"),
+            String::from("12001"),
+            50,
+        );
+
+        match net_msg.send(
+            Box::from(UpdatePos{id:15, x: 15f32, y: 15f32, z:15f32}),
+            true) {
+            Err(_) => assert!(true),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn buffer_size_too_small(){
+        let mut net_msg = NetMessenger::new(
+            String::from("0.0.0.0:12002"),
+            String::from("127.0.0.1:12002"),
+            5,
+        );
+
+        net_msg.send(
+            Box::from(UpdatePos{id:15, x: 15f32, y: 15f32, z:15f32}),
+            true).unwrap();
+
+        match net_msg.recv(true, true) {
+            None => assert!(true),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn buffer_size_ok() {
+        let mut net_msg = NetMessenger::new(
+            String::from("0.0.0.0:12003"),
+            String::from("127.0.0.1:12003"),
+            50,
+        );
+        net_msg.register(UpdatePos::header(), UpdatePos::from_buffer);
+
+        net_msg.send(
+            Box::from(UpdatePos{id:15, x: 15f32, y: 15f32, z:15f32}),
+            true).unwrap();
+
+        match net_msg.recv(true, true) {
+            None => panic!(),
+            _ => assert!(true),
+        }
+    }
+
+    #[test]
+    //to be written
+    fn recv_wrong_size_buffer() {
+        assert!(true);
+    }
+
 }
