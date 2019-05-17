@@ -3,8 +3,10 @@ use byteorder::{BigEndian,WriteBytesExt,ReadBytesExt};
 
 use std::net::UdpSocket;
 use std::collections::HashMap;
-use std::io::{Cursor, ErrorKind};
 use std::string::ToString;
+use std::io::{Cursor, ErrorKind};
+
+pub mod utilities;
 
 /// This Trait must be implemented on any struct that you wish to use as a UDP datagram
 pub trait Datagram: Downcast {
