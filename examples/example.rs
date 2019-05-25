@@ -36,6 +36,8 @@ impl Datagram for UpdatePos {
     }
 
     fn header()->u32 {return 834227670}
+
+    fn get_header(&self)->u32 {return 834227670}
 }
 
 fn main() {
@@ -61,10 +63,12 @@ fn main() {
         //Some(Msg: Box<Datagram>)
         Some(msg) => {
 
-            //now downcast to particular struct here
-            if let Some(t) = msg.downcast_ref::<UpdatePos>() {
-                println!("Received: [id {} at ({},{},{}) with string: {}]", t.id, t.x, t.y, t.z, t.ip);}
-            //else if let Some(t) = msg.downcast_ref::<Another msg type>() {}
+            if UpdatePos::header() == msg.get_header() {
+
+                let pos = msg.downcast_ref::<UpdatePos>().unwrap();
+                println!("UpdatePos: {},{},{}", pos.x, pos.y, pos.z);
+            }
+
         }
         None => {println!("no Datagram received!")}
     }

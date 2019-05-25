@@ -20,10 +20,8 @@ pub trait Datagram: Downcast {
     /// Static method used to define the header_id.
     fn header()->u32 where Self: Sized;
 
-    /// An additional necessary method to make this crate work. Will not be touched by the user
-    fn get_header(&self)->u32 where Self: Sized {
-        Self::header()
-    }
+    /// method used to get the header from specific object
+    fn get_header(&self)->u32;
 }
 impl_downcast!(Datagram);
 
@@ -132,6 +130,7 @@ impl NetMessenger {
     }
 }
 
+/*
 #[cfg(test)]
 mod struct_creation {
     use crate::{NetMessenger, Datagram};
@@ -251,3 +250,4 @@ mod struct_creation {
     }
 
 }
+*/

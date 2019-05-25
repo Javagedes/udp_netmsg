@@ -23,9 +23,9 @@ If you have any suggestions for this crate, let me know! If something is not cle
 ### Example
 ```rust
 use udp_netmsg::{NetMessenger, Datagram};
-use std::io::Cursor;
-use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
 use udp_netmsg::utilities::{ReadString, WriteString};
+use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
+use std::io::Cursor;
 
 #[derive(Debug)]
 struct UpdatePos {
@@ -33,7 +33,7 @@ struct UpdatePos {
     pub x: f32,
     pub y: f32,
     pub z: f32,
-    pub s: String
+    pub ip: String
 }
 
 impl Datagram for UpdatePos {
@@ -41,23 +41,29 @@ impl Datagram for UpdatePos {
         let id = buffer.read_u32::<BigEndian>().unwrap();
         let x = buffer.read_f32::<BigEndian>().unwrap();
         let y = buffer.read_f32::<BigEndian>().unwrap();
+        let ip = buffer.read_string().unwrap();
         let z = buffer.read_f32::<BigEndian>().unwrap();
-        let s = buffer.read_string().unwrap();
-        return Box::new(UpdatePos{id,x,y,z,s})
+
+        return Box::new(UpdatePos{id,x,y,z, ip})
     }
 
     fn to_buffer(&self)->Vec<u8> {
         let mut wtr: Vec<u8> = Vec::new();
+        //this buffer is 16 + 4 more for the header
         wtr.write_u32::<BigEndian>(self.id).unwrap();
         wtr.write_f32::<BigEndian>(self.x).unwrap();
         wtr.write_f32::<BigEndian>(self.y).unwrap();
-        wtr.write_f32::<BigEndian>(self.z).unwrap();
         wtr.write_string( self.ip.clone()).unwrap();
+        wtr.write_f32::<BigEndian>(self.z).unwrap();
+
         return wtr
     }
 
     fn header()->u32 {return 834227670}
+
+    fn get_header(&self)->u32 {return 834227670}
 }
+
 fn main() {
 
     let source_ip = String::from("0.0.0.0:12000");
@@ -71,7 +77,7 @@ fn main() {
     //register the struct so it knows how to read datagram!
     net_msg.register(UpdatePos::header(), UpdatePos::from_buffer);
 
-    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32, s: String::from("Hello How are you?")}), true) {
+    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32, ip: String::from("Hello How are you?")}), true) {
         Ok(_) => println!("datagram sent!"),
         Err(e) => println!("datagram failed to send because: {}", e)
     }
@@ -81,10 +87,12 @@ fn main() {
         //Some(Msg: Box<Datagram>)
         Some(msg) => {
 
-            //now downcast to particular struct here
-            if let Some(t) = msg.downcast_ref::<UpdatePos>() {
-                println!("Received: [id {} at ({},{},{})] with String: {}", t.id, t.x, t.y, t.z, t.s);}
-            //else if let Some(t) = msg.downcast_ref::<Another msg type>() {}
+            if UpdatePos::header() == msg.get_header() {
+
+                let pos = msg.downcast_ref::<UpdatePos>().unwrap();
+                println!("UpdatePos: {},{},{}", pos.x, pos.y, pos.z);
+            }
+
         }
         None => {println!("no Datagram received!")}
     }
