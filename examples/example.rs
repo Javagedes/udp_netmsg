@@ -65,7 +65,7 @@ fn main() {
 
             if UpdatePos::header() == msg.get_header() {
 
-                let pos = msg.downcast_ref::<UpdatePos>().unwrap();
+                let pos: &UpdatePos = msg.downcast_ref().unwrap();
                 println!("UpdatePos: {},{},{}", pos.x, pos.y, pos.z);
             }
 

@@ -1,4 +1,6 @@
 use std::io::{Cursor, Result, Write, BufRead, Read};
+use downcast_rs::Downcast;
+use crate::Datagram;
 
 ///Utility trait for writing a string to a buffer
 ///Strings in Rust are not null terminated but having null terminated strings can

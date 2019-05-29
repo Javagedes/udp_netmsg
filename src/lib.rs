@@ -130,7 +130,7 @@ impl NetMessenger {
     }
 }
 
-/*
+
 #[cfg(test)]
 mod struct_creation {
     use crate::{NetMessenger, Datagram};
@@ -165,6 +165,7 @@ mod struct_creation {
         }
 
         fn header()->u32 {return 834227670}
+        fn get_header(&self)->u32 { return 834227670 }
     }
 
     #[test]
@@ -248,6 +249,5 @@ mod struct_creation {
     fn recv_wrong_size_buffer() {
         assert!(true);
     }
-
 }
-*/
+
