@@ -1,47 +1,39 @@
 use udp_netmsg::{NetMessenger, Datagram};
-use udp_netmsg::utilities::{ReadString, WriteString};
-use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
-use std::io::Cursor;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct UpdatePos {
-    pub id: u32,
     pub x: f32,
     pub y: f32,
     pub z: f32,
-    pub ip: String
+    pub text: String
 }
 
 impl Datagram for UpdatePos {
-    fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Datagram> {
-        let id = buffer.read_u32::<BigEndian>().unwrap();
-        let x = buffer.read_f32::<BigEndian>().unwrap();
-        let y = buffer.read_f32::<BigEndian>().unwrap();
-        let ip = buffer.read_string().unwrap();
-        let z = buffer.read_f32::<BigEndian>().unwrap();
-
-        return Box::new(UpdatePos{id,x,y,z, ip})
-    }
-
-    fn to_buffer(&self)->Vec<u8> {
-        let mut wtr: Vec<u8> = Vec::new();
-        //this buffer is 16 + 4 more for the header
-        wtr.write_u32::<BigEndian>(self.id).unwrap();
-        wtr.write_f32::<BigEndian>(self.x).unwrap();
-        wtr.write_f32::<BigEndian>(self.y).unwrap();
-        wtr.write_string( self.ip.clone()).unwrap();
-        wtr.write_f32::<BigEndian>(self.z).unwrap();
-
-        return wtr
+    fn serial(&self)->Vec<u8> {
+        return serde_json::to_vec(self).unwrap();
     }
 
     fn header()->u32 {return 834227670}
+}
 
-    fn get_header(&self)->u32 {return 834227670}
+#[derive(Serialize, Deserialize, Debug)]
+struct CreateEntity {
+    pub entity_type: String,
+    pub location: (f32, f32, f32),
+}
+
+impl Datagram for CreateEntity {
+    fn serial(&self)->Vec<u8> {
+        return serde_json::to_vec(self).unwrap();
+    }
+
+    fn header()->u32 {return 505005}
 }
 
 fn main() {
 
+    //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
     let dest_ip = String::from("127.0.0.1:12000");
     let recv_buffer_size_bytes = 100;
@@ -50,27 +42,28 @@ fn main() {
         dest_ip,
         recv_buffer_size_bytes);
 
-    //register the struct so it knows how to read datagram!
-    net_msg.register(UpdatePos::header(), UpdatePos::from_buffer);
-
-    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32, ip: String::from("Hello How are you?")}), true) {
+    //register the structs so it knows how to read datagram!
+    net_msg.register(UpdatePos::header());
+    net_msg.register(CreateEntity::header());
+    
+    match net_msg.send(UpdatePos{x: 5.0f32, y:5.0f32, z:5.0f32, text: String::from("Hello How are you?")}) {
         Ok(_) => println!("datagram sent!"),
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    //msg.recv(...) returns Some(datagram) or None
-    match net_msg.recv(false, true) {
-        //Some(Msg: Box<Datagram>)
-        Some(msg) => {
-
-            if UpdatePos::header() == msg.get_header() {
-
-                let pos: &UpdatePos = msg.downcast_ref().unwrap();
-                println!("UpdatePos: {},{},{}", pos.x, pos.y, pos.z);
-            }
-
-        }
-        None => {println!("no Datagram received!")}
+    match net_msg.send(CreateEntity{entity_type: String::from("Boss"), location: (50f32, 15f32, 17f32)}) {
+        Ok(_) => println!("datagram sent!"),
+        Err(e) => println!("datagram failed to send because: {}", e)
     }
-}
 
+    net_msg.recv(true);
+    net_msg.recv(true);
+
+    //notice that each message type is stored separately, so you can write handlers in your code that check for
+    //specific message types.
+    let create_entity_message: CreateEntity = net_msg.get().unwrap();
+    let update_pos_message: UpdatePos = net_msg.get().unwrap();
+
+    println!("{:?}", create_entity_message);
+    println!("{:?}", update_pos_message);
+}

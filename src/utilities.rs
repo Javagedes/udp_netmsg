@@ -1,6 +1,4 @@
 use std::io::{Cursor, Result, Write, BufRead, Read};
-use downcast_rs::Downcast;
-use crate::Datagram;
 
 ///Utility trait for writing a string to a buffer
 ///Strings in Rust are not null terminated but having null terminated strings can
@@ -8,7 +6,6 @@ use crate::Datagram;
 pub trait WriteString {
 
     /// Adds a \0 to the end of the string and writes it to a buffer
-    #[inline]
     fn write_string(&mut self, s: String)-> Result<()>;
 }
 
@@ -29,7 +26,6 @@ pub trait ReadString {
 
     ///Reads a string from starting point in cursor until a \0
     ///Includes the \0
-    #[inline]
     fn read_string(&mut self)->Result<String>;
 }
 

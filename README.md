@@ -5,67 +5,55 @@ and implementing a trait.
 
 ### Important to note:
 - **This crate is actively being worked on and interfaces may change from update to update**
+- Currently this crate only only deserializes in JSON format. Future updates will allow for the user to specify the serialization format from serde
+- The get method allows you to decide what message you want to receive. Any message of the same type is stored in received order, however there is no way to tell the order in which different type messages are received. This is designed such that you can give shared access to the NetMessenger throughout your codebase and write different handlers for different messages in separate locations of the code base
 - This crate will automatically add the user defined header to the front of the datagram. the header id is 
 defined in the fn id() function
-- It can optionally include payload length (u32), can be important for target application implementation
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
-as it uses vectors as a buffer. In my light testing, sending/receiving max size udp datagrams
+as it uses a vector as a buffer. In my light testing, sending/receiving max size udp datagrams
 (65k bytes), it is about 30% slower than if you were to use an array.
-- This crate is designed to send datagrams in BigEndian. You decide how the buffer of data is built,
-but the 4bytes of header is always as u32 BigEndian. I plan on changing this!
-- The recv method returns a trait object *Datagram*, but you are able to downcast the message 
-back to the original struct (see example below). I hope to simplify this!
 - Currently can only send datagrams to a single ip/port
-
 
 If you have any suggestions for this crate, let me know! If something is not clear or confusing, let me know!
 
 ### Example
 ```rust
 use udp_netmsg::{NetMessenger, Datagram};
-use udp_netmsg::utilities::{ReadString, WriteString};
-use byteorder::{BigEndian,ReadBytesExt, WriteBytesExt};
-use std::io::Cursor;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct UpdatePos {
-    pub id: u32,
     pub x: f32,
     pub y: f32,
     pub z: f32,
-    pub ip: String
+    pub text: String
 }
 
 impl Datagram for UpdatePos {
-    fn from_buffer(mut buffer: Cursor<Vec<u8>>)->Box<Datagram> {
-        let id = buffer.read_u32::<BigEndian>().unwrap();
-        let x = buffer.read_f32::<BigEndian>().unwrap();
-        let y = buffer.read_f32::<BigEndian>().unwrap();
-        let ip = buffer.read_string().unwrap();
-        let z = buffer.read_f32::<BigEndian>().unwrap();
-
-        return Box::new(UpdatePos{id,x,y,z, ip})
-    }
-
-    fn to_buffer(&self)->Vec<u8> {
-        let mut wtr: Vec<u8> = Vec::new();
-        //this buffer is 16 + 4 more for the header
-        wtr.write_u32::<BigEndian>(self.id).unwrap();
-        wtr.write_f32::<BigEndian>(self.x).unwrap();
-        wtr.write_f32::<BigEndian>(self.y).unwrap();
-        wtr.write_string( self.ip.clone()).unwrap();
-        wtr.write_f32::<BigEndian>(self.z).unwrap();
-
-        return wtr
+    fn serial(&self)->Vec<u8> {
+        return serde_json::to_vec(self).unwrap();
     }
 
     fn header()->u32 {return 834227670}
+}
 
-    fn get_header(&self)->u32 {return 834227670}
+#[derive(Serialize, Deserialize, Debug)]
+struct CreateEntity {
+    pub entity_type: String,
+    pub location: (f32, f32, f32),
+}
+
+impl Datagram for CreateEntity {
+    fn serial(&self)->Vec<u8> {
+        return serde_json::to_vec(self).unwrap();
+    }
+
+    fn header()->u32 {return 505005}
 }
 
 fn main() {
 
+    //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
     let dest_ip = String::from("127.0.0.1:12000");
     let recv_buffer_size_bytes = 100;
@@ -74,32 +62,35 @@ fn main() {
         dest_ip,
         recv_buffer_size_bytes);
 
-    //register the struct so it knows how to read datagram!
-    net_msg.register(UpdatePos::header(), UpdatePos::from_buffer);
-
-    match net_msg.send(Box::from(UpdatePos{id: 16, x: 5.0f32, y:5.0f32, z:5.0f32, ip: String::from("Hello How are you?")}), true) {
+    //register the structs so it knows how to read datagram!
+    net_msg.register(UpdatePos::header());
+    net_msg.register(CreateEntity::header());
+    
+    match net_msg.send(UpdatePos{x: 5.0f32, y:5.0f32, z:5.0f32, text: String::from("Hello How are you?")}) {
         Ok(_) => println!("datagram sent!"),
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    //msg.recv(...) returns Some(datagram) or None
-    match net_msg.recv(false, true) {
-        //Some(Msg: Box<Datagram>)
-        Some(msg) => {
-
-            if UpdatePos::header() == msg.get_header() {
-
-                let pos = msg.downcast_ref::<UpdatePos>().unwrap();
-                println!("UpdatePos: {},{},{}", pos.x, pos.y, pos.z);
-            }
-
-        }
-        None => {println!("no Datagram received!")}
+    match net_msg.send(CreateEntity{entity_type: String::from("Boss"), location: (50f32, 15f32, 17f32)}) {
+        Ok(_) => println!("datagram sent!"),
+        Err(e) => println!("datagram failed to send because: {}", e)
     }
+
+    net_msg.recv(true);
+    net_msg.recv(true);
+
+    //notice that each message type is stored separately, so you can write handlers in your code that check for
+    //specific message types.
+    let create_entity_message: CreateEntity = net_msg.get().unwrap();
+    let update_pos_message: UpdatePos = net_msg.get().unwrap();
+
+    println!("{:?}", create_entity_message);
+    println!("{:?}", update_pos_message);
 }
 ```
 
 ### To do 
-- [ ] Check if buffer is large enough for datagram. Have it return None instead of crashing
-- [ ] Allow users to choose bigEndian or littleEndian for header / payload length
-- [ ] Simplify downcasting
+- [ ] Switch back to Vectors for the buffer
+- [ ] Allow users to choose serialization / deserialization methods
+- [ ] Modify NetMessenger such that a second thread is used to continously check for new messages
+- [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
