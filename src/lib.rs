@@ -1,13 +1,10 @@
 use byteorder::{BigEndian,WriteBytesExt,ReadBytesExt};
-
 use std::net::UdpSocket;
 use std::collections::HashMap;
 use std::string::ToString;
 use std::io::{Cursor, ErrorKind};
-//use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
-
-pub mod utilities;
+use std::net::{ToSocketAddrs, SocketAddr};
 
 /// This Trait must be implemented on any struct that you wish to use as a UDP datagram
 pub trait Datagram {
@@ -30,34 +27,35 @@ pub trait Datagram {
 pub struct NetMessenger {
     /// The udp socket (e.g. 0.0.0.0:12000) is the ip & socket that datagrams are received on
     udp: UdpSocket,
-    /// The ip/socket that all datagrams will be sent to
-    dest_ip: String,
+
+    msg_map: HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>,
 
     /// The amount of bytes the buffer for receiving data should be.
     /// If your datagrams are huge, this will become slow as it uses vectors as the buffers
     /// about a 30% performance loss when sending / receiving the biggest datagrams (65k bytes)
-    
-    msg_map: HashMap<u32, Vec<Vec<u8>>>,
+
     recv_buffer_size_bytes: u16,
 }
 
 impl NetMessenger {
 
     /// Simple Constructor for the class
-    pub fn new(source_ip: String, dest_ip: String, recv_buffer_size_bytes: u16)->NetMessenger {
+    pub fn new(source_ip: String, recv_buffer_size_bytes: u16)->Result<NetMessenger, &'static str> {
 
-        let udp: UdpSocket = UdpSocket::bind(source_ip)
-            .expect("Failed to bind to address for sending/receiving datagrams");
+        let udp: UdpSocket = match UdpSocket::bind(source_ip) {
+            Ok(socket) => socket,
+            Err(_) => return Err("Failed to bind to socket")
+        };
+            
 
         udp.set_nonblocking(true).unwrap();
-        let msg_map: HashMap<u32, Vec<Vec<u8>>> = HashMap::new();
+        let msg_map: HashMap<u32, Vec<(SocketAddr, Vec<u8>)>> = HashMap::new();
 
-        NetMessenger {
+        Ok(NetMessenger {
             udp,
-            dest_ip,
             msg_map,
             recv_buffer_size_bytes,
-        }
+        })
     }
 
     /// Checks to see if a datagram has been received. Returns None if it has not.
@@ -75,7 +73,7 @@ impl NetMessenger {
         buffer.reserve(self.recv_buffer_size_bytes as usize);
         buffer = vec![0; self.recv_buffer_size_bytes as usize];
 
-        let num_bytes =  match self.udp.recv(&mut buffer){
+        let (num_bytes, addr) =  match self.udp.recv_from(&mut buffer){
             Ok(n) => { n },
             Err(e)=> {
                 if e.kind() == ErrorKind::WouldBlock {}
@@ -96,14 +94,15 @@ impl NetMessenger {
         data.remove(0);
 
         let vec = self.msg_map.get_mut(&id).unwrap();
-        vec.push(data);
+        vec.push((addr, data));
     }
 
-    pub fn get<T: Datagram + DeserializeOwned >(&mut self)->Option<T> {
+    pub fn get<T: Datagram + DeserializeOwned >(&mut self)->Option<(SocketAddr, T)> {
         
         match self.msg_map.get_mut(&T::header()) {
             Some(data) => {
-                return serde_json::from_slice(&data.remove(0)).unwrap()
+                let (addr, vec) = &data.remove(0);
+                return Some((*addr, serde_json::from_slice(vec).unwrap()))
             },
             None => return None
         };
@@ -113,7 +112,8 @@ impl NetMessenger {
     /// If 'include_header' = true: attach the header to the front and send the datagram
     /// If 'include_payload_len' = true: insert payload len (4 bytes) between header & payload
     /// **Incorrectly setting include_payload_len will produce no error but bad data!**
-    pub fn send<T: Datagram>(&self, datagram: T)->Result<(),String> {
+
+    pub fn send<T: Datagram, A: ToSocketAddrs>(&self, datagram: T, dest_addr: A)->Result<(),String> {
 
         let mut wtr: Vec<u8> = vec![];
         let mut payload = datagram.serial();
@@ -122,7 +122,7 @@ impl NetMessenger {
 
         wtr.append(&mut payload);
 
-        match self.udp.send_to(&wtr,&self.dest_ip) {
+        match self.udp.send_to(&wtr, dest_addr) {
             Ok(_) => return Ok(()),
             Err(e)=> return Err(e.to_string()),
         }
@@ -167,11 +167,10 @@ mod struct_creation {
     fn correct_source_dest() {
         let net_msg = NetMessenger::new(
             String::from("0.0.0.0:12000"),
-            String::from("127.0.0.1:12000"),
             50,
-        );
+        ).unwrap();
 
-        assert_eq!(net_msg.send(UpdatePos{x: 15f32, y: 15f32, z:15f32}).unwrap(), ());
+        assert_eq!(net_msg.send(UpdatePos{x: 15f32, y: 15f32, z:15f32}, String::from("127.0.0.1:12000")).unwrap(), ());
     }
 
     #[test]
@@ -179,23 +178,8 @@ mod struct_creation {
     fn incorrect_source() {
         NetMessenger::new(
             String::from("12000"),
-            String::from("127.0.0.1:12000"),
             50,
-        );
-    }
-
-    #[test]
-    fn incorrect_dest() {
-        let net_msg = NetMessenger::new(
-            String::from("0.0.0.0:12001"),
-            String::from("12001"),
-            50,
-        );
-
-        match net_msg.send(UpdatePos{x: 15f32, y: 15f32, z:15f32}) {
-            Err(_) => assert!(true),
-            _ => panic!(),
-        }
+        ).unwrap();
     }
 
     #[test]
@@ -203,13 +187,12 @@ mod struct_creation {
     fn buffer_size_too_small(){
         let mut net_msg = NetMessenger::new(
             String::from("0.0.0.0:12002"),
-            String::from("127.0.0.1:12002"),
             5,
-        );
+        ).unwrap();
 
         net_msg.register(UpdatePos::header());
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
-        net_msg.send(pos).unwrap();
+        net_msg.send(pos, String::from("127.0.0.1:12002")).unwrap();
 
         net_msg.recv(true);
 
@@ -220,14 +203,14 @@ mod struct_creation {
     fn buffer_size_ok() {
         let mut net_msg = NetMessenger::new(
             String::from("0.0.0.0:12003"),
-            String::from("127.0.0.1:12003"),
             50,
-        );
+        ).unwrap();
+
         net_msg.register(UpdatePos::header());
 
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
 
-        net_msg.send(pos).unwrap();
+        net_msg.send(pos, String::from("127.0.0.1:12003")).unwrap();
 
         net_msg.recv(true);
 
