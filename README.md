@@ -7,6 +7,7 @@ and implementing a trait.
 - **This crate is actively being worked on and interfaces may change from update to update**
 - Currently this crate only only deserializes in JSON format. Future updates will allow for the user to specify the serialization format from serde
 - The get method allows you to decide what message you want to receive. Any message of the same type is stored in received order, however there is no way to tell the order in which different type messages are received. This is designed such that you can give shared access to the NetMessenger throughout your codebase and write different handlers for different messages in separate locations of the code base
+- This crate runs a listener on a second thread that listens for Udp Messages
 - This crate will automatically add the user defined header to the front of the datagram. the header id is 
 defined in the fn id() function
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
@@ -96,5 +97,4 @@ fn main() {
 ### To do 
 - [ ] refactor complexity of receiving a message
 - [ ] Allow users to choose serialization / deserialization methods
-- [ ] Modify NetMessenger such that a second thread is used to continously check for new messages
 - [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 

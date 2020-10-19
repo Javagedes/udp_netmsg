@@ -1,5 +1,6 @@
 use udp_netmsg::{NetMessenger, Datagram};
 use serde::{Serialize, Deserialize};
+use std::{thread, time};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct UpdatePos {
@@ -35,8 +36,7 @@ fn main() {
 
     //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
-    let recv_buffer_size_bytes = 100;
-    let mut net_msg = NetMessenger::new(source_ip,recv_buffer_size_bytes).unwrap();
+    let mut net_msg = NetMessenger::new(source_ip).unwrap();
 
     //register the structs so it knows how to read datagram!
     net_msg.register(UpdatePos::header());
@@ -51,7 +51,8 @@ fn main() {
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    net_msg.recv(true);
+    net_msg.start();
+    thread::sleep(time::Duration::from_millis(100));
 
     //notice that each message type is stored separately, so you can write handlers in your code that check for
     //specific message types.
@@ -66,7 +67,8 @@ fn main() {
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    net_msg.recv(true);
+    thread::sleep(time::Duration::from_millis(100));
+    net_msg.stop();
 
     let (_, update_pos_message) = net_msg.get::<UpdatePos>().unwrap();
 
