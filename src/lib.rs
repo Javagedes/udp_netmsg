@@ -7,7 +7,25 @@ use serde::de::DeserializeOwned;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::thread;
 
+pub struct ThreadSafe<T> {
+    obj: Arc<Mutex<T>>
+}
 
+impl <T>ThreadSafe<T> {
+    fn lock(&self)->Result<std::sync::MutexGuard<'_, T>,
+    std::sync::PoisonError<std::sync::MutexGuard<'_, T>>>
+    {
+        return self.obj.lock()
+    }
+
+    fn clone(&self)->ThreadSafe<T> {
+        return ThreadSafe{obj: self.obj.clone()}
+    }
+
+    fn from(obj: T)->ThreadSafe<T> {
+        return ThreadSafe{obj: Arc::from(Mutex::from(obj))}
+    }
+}
 
 /// This Trait must be implemented on any struct that you wish to use as a UDP datagram
 pub trait Datagram {
@@ -29,15 +47,15 @@ pub trait Datagram {
 /// or get it by message type.
 pub struct NetMessenger {
     /// The socket that datagrams are received on
-    udp: Arc<Mutex<UdpSocket>>,
+    udp: ThreadSafe<UdpSocket>,
 
     /// Storage mechanism for datagrams
-    msg_map: Arc<Mutex<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>>,
+    msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>,
 
     /// The reserved size of buffer. Since this is a vec, it will expand if needed.
     recv_buffer_size_bytes: u16,
 
-    stop: Arc<Mutex<bool>>
+    stop: ThreadSafe<bool>
 }
 
 impl NetMessenger {
@@ -52,14 +70,14 @@ impl NetMessenger {
             
         udp.set_nonblocking(true).unwrap();
 
-        let udp = Arc::from(Mutex::from(udp));
-        let msg_map: Arc<Mutex<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>> = Arc::from(Mutex::from(HashMap::new()));
+        let udp = ThreadSafe::from(udp);
+        let msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
 
         Ok(NetMessenger {
             udp,
             msg_map,
             recv_buffer_size_bytes: 100,
-            stop: Arc::from(Mutex::from(false))
+            stop: ThreadSafe::from(false)
         })
     }
 
@@ -75,12 +93,9 @@ impl NetMessenger {
         let stop = self.stop.clone();
 
         thread::spawn( move || {
-            println!("Detection Started");
             while *stop.lock().unwrap() == false {
                 NetMessenger::recv(udp.clone(), msg_map.clone(), buffer_len,false);
             }
-
-            println!("Detection Stopped");
         });
     }
 
@@ -93,7 +108,7 @@ impl NetMessenger {
     /// matched datagram struct.
     /// If 'ignore_payload_len' = true, it won't pass payload len (u32) to the datagram constructor
     /// passes remaining buffer to specific datagram constructor and returns struct
-    pub fn recv(udp: Arc<Mutex<UdpSocket>>, msg_map: Arc<Mutex<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>>, buffer_len: usize, blocking: bool ){
+    pub fn recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>, buffer_len: usize, blocking: bool ){
 
         let udp = udp.lock().unwrap();
         let mut msg_map = msg_map.lock().unwrap();
@@ -107,7 +122,7 @@ impl NetMessenger {
         buffer = vec![0; buffer_len];
 
         let (num_bytes, addr) =  match udp.recv_from(&mut buffer){
-            Ok(n) => { println!("Data Recieved"); n },
+            Ok(n) => { n },
             Err(e)=> {
                 if e.kind() == ErrorKind::WouldBlock {}
                 else {println!("{}",e);}
@@ -127,7 +142,6 @@ impl NetMessenger {
         data.remove(0);
 
         let vec = msg_map.get_mut(&id).unwrap();
-        println!("Adding to the vec...");
         vec.push((addr, data));
     }
 
@@ -223,7 +237,7 @@ mod struct_creation {
         net_msg.send(pos, String::from("127.0.0.1:12004")).unwrap();
 
         net_msg.start();
-        thread::sleep(time::Duration::from_millis(1000));
+        thread::sleep(time::Duration::from_millis(100));
         net_msg.stop();
 
         net_msg.get::<UpdatePos>().unwrap();
