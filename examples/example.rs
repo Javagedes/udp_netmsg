@@ -1,4 +1,5 @@
-use udp_netmsg::udpmanager::{Builder, JSON};
+use udp_netmsg::udpmanager::Builder;
+use udp_netmsg::serdes::JSON;
 use udp_netmsg::datagram::{Datagram};
 use serde::{Serialize, Deserialize};
 use std::{thread, time};
@@ -44,7 +45,6 @@ fn main() {
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    net_msg.start();
     thread::sleep(time::Duration::from_millis(100));
 
     //notice that each message type is stored separately, so you can write handlers in your code that check for

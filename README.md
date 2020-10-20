@@ -45,9 +45,7 @@ If you have any suggestions for this crate, let me know! If something is not cle
 ```
 
 ### To do 
-- [ ] Allow users to choose serialization / deserialization methods. Do this by taking a Trait? maybe with Fn()? Do this with the builder method? use a "serialize_with()" and "deserialize_with()" maybe?
+- [ ] Split up the sending and receiving part of the socket so I don't have to lock the whole thing and makes responses extremely slow.
 - [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
-- [ ] Create a builder method for the NetMessenger so that we can eventually have the netmessenger start immediately when built
-- [ ] Set up the netmessenger such that it starts up during the ::Build() method and automatically stops itsself when it loses scope
+- [ ] Set up the netmessenger such that it starts up during the ::start() method of the builder helper and automatically stops itsself when it loses scope
 - [ ] Allow user to decide what Endianness that data is sent as.
-- [ ] Allow user to set the timeout time (lower timeout time = faster response to close, but more resources used)

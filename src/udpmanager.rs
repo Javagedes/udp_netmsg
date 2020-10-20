@@ -10,6 +10,7 @@ use std::marker::PhantomData;
 
 use super::threadsafe::ThreadSafe;
 use super::datagram::Datagram;
+use super::serdes::SerDesType;
 
 /// This is the struct that the user will use for sending and receiving datagrams
 ///TODO: Change the way messages are stored so that user can chose to either get the next message in time received
@@ -17,14 +18,13 @@ use super::datagram::Datagram;
 //We can store it as just a long vec of (u32, SocketAddr, Vec<u8>). Then we can get them in order or filter them
 //With maybe a map that only returns the correct ones based off the u32 identifier.
 pub struct UdpManager<T: SerDesType> {
-    /// The socket that datagrams are received on
+
     udp: ThreadSafe<UdpSocket>,
 
-    /// Storage mechanism for datagrams
     msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>,
     
     resource_type: PhantomData<T>,
-    /// The reserved size of buffer. Since this is a vec, it will expand if needed.
+
     recv_buffer_size_bytes: usize,
 
     stop: ThreadSafe<bool>,
@@ -63,7 +63,7 @@ impl <T: SerDesType>UdpManager<T> {
         })
     }
 
-    pub fn start(&mut self){
+    fn start(&mut self){
 
         let udp = self.udp.clone();
         //Due to how this is set up, the buffer size cant be changed after started
@@ -197,27 +197,10 @@ impl <T: SerDesType>Builder<T> {
     }
 
     pub fn start(self)->UdpManager<T> {
-        return UdpManager::new(self).unwrap();
-    }
-}
+        let mut man = UdpManager::new(self).unwrap();
 
-pub trait SerDesType {
-    type Error;
+        man.start();
 
-    fn serial<T: ?Sized + Serialize>(obj: &T) -> Result<Vec<u8>, Self::Error>;
-
-    fn deserial<T: DeserializeOwned>(v: &'_ [u8]) -> Result<T, Self::Error>;
-}
-
-pub struct JSON;
-impl SerDesType for JSON {
-    type Error = serde_json::Error;
-
-    fn serial<T: ?Sized + Serialize>(obj: &T) -> Result<Vec<u8>, Self::Error> {
-        return serde_json::to_vec(obj);
-    }
-
-    fn deserial<T: DeserializeOwned>(v: &'_ [u8])-> Result<T, Self::Error> {
-        return serde_json::from_slice(v);
+        return man;
     }
 }
