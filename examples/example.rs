@@ -1,4 +1,5 @@
-use udp_netmsg::{NetMessenger, Datagram};
+use udp_netmsg::udpmanager::UdpManager;
+use udp_netmsg::datagram::Datagram;
 use serde::{Serialize, Deserialize};
 use std::{thread, time};
 
@@ -36,7 +37,7 @@ fn main() {
 
     //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
-    let mut net_msg = NetMessenger::new(source_ip).unwrap();
+    let mut net_msg = UdpManager::new(source_ip).unwrap();
 
     //register the structs so it knows how to read datagram!
     net_msg.register(UpdatePos::header());

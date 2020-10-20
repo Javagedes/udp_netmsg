@@ -54,50 +54,26 @@ impl Datagram for CreateEntity {
 
 fn main() {
 
-    //source_ip and dest_ip are the same so we don't have to spin up a server and client
-    let source_ip = String::from("0.0.0.0:12000");
-    let mut net_msg = NetMessenger::new(source_ip).unwrap();
+        let mut net_msg = NetMessenger::new(
+            String::from("0.0.0.0:12004")
+        ).unwrap();
 
-    //register the structs so it knows how to read datagram!
-    net_msg.register(UpdatePos::header());
-    net_msg.register(CreateEntity::header());
-    
-    let dest_ip = String::from("127.0.0.1:12000");
+        net_msg.register(UpdatePos::header());
 
-    let new_entity = CreateEntity {entity_type: String::from("Boss"), location: (50f32, 15f32, 17f32)};
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:12004")).unwrap();
 
-    match net_msg.send(new_entity, &dest_ip) {
-        Ok(_) => println!("datagram sent!"),
-        Err(e) => println!("datagram failed to send because: {}", e)
-    }
+        net_msg.start();
+        //This gives time for the message to be read before immediately shutting it down
+        thread::sleep(time::Duration::from_millis(100));
+        net_msg.stop();
 
-    net_msg.start();
-    thread::sleep(time::Duration::from_millis(100));
-
-    //notice that each message type is stored separately, so you can write handlers in your code that check for
-    //specific message types.
-    let (from_addr, create_entity_message) = net_msg.get::<CreateEntity>().unwrap();
-
-    println!("Message Received!: {:?}", create_entity_message);
-
-    let move_entity = UpdatePos {x: 16f32, y: 17f32, z: 20f32, text: String::from("Hello! I Moved")};
-
-    match net_msg.send(move_entity, from_addr) {
-        Ok(_) => println!("datagram sent!"),
-        Err(e) => println!("datagram failed to send because: {}", e)
-    }
-
-    thread::sleep(time::Duration::from_millis(100));
-    net_msg.stop();
-
-    let (_, update_pos_message) = net_msg.get::<UpdatePos>().unwrap();
-
-    println!("Message Received!: {:?}", update_pos_message);
+        net_msg.get::<UpdatePos>().unwrap();
 }
 ```
 
 ### To do 
-- [ ] Allow users to choose serialization / deserialization methods. Do this by taking a Trait? maybe with Fn()?
+- [ ] Allow users to choose serialization / deserialization methods. Do this by taking a Trait? maybe with Fn()? Do this with the builder method? use a "serialize_with()" and "deserialize_with()" maybe?
 - [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
 - [ ] Create a builder method for the NetMessenger so that we can eventually have the netmessenger start immediately when built
 - [ ] Set up the netmessenger such that it starts up during the ::Build() method and automatically stops itsself when it loses scope
