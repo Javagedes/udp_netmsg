@@ -55,7 +55,9 @@ pub struct NetMessenger {
     /// The reserved size of buffer. Since this is a vec, it will expand if needed.
     recv_buffer_size_bytes: u16,
 
-    stop: ThreadSafe<bool>
+    stop: ThreadSafe<bool>,
+
+    thread: Option<thread::JoinHandle<()>>
 }
 
 impl NetMessenger {
@@ -77,7 +79,8 @@ impl NetMessenger {
             udp,
             msg_map,
             recv_buffer_size_bytes: 100,
-            stop: ThreadSafe::from(false)
+            stop: ThreadSafe::from(false),
+            thread: None
         })
     }
 
@@ -85,22 +88,27 @@ impl NetMessenger {
         self.recv_buffer_size_bytes = recv_buffer_size_bytes;
     }
 
-    pub fn start(&self){
+    pub fn start(&mut self){
 
         let udp = self.udp.clone();
         let buffer_len = self.recv_buffer_size_bytes as usize;
         let msg_map = self.msg_map.clone();
         let stop = self.stop.clone();
 
-        thread::spawn( move || {
-            while *stop.lock().unwrap() == false {
-                NetMessenger::recv(udp.clone(), msg_map.clone(), buffer_len,false);
-            }
-        });
+        let thread = thread::Builder::new()
+            .name(String::from("thread_udp_listener"))
+            .spawn( move || {
+                while *stop.lock().unwrap() == false {
+                    NetMessenger::recv(udp.clone(), msg_map.clone(), buffer_len,false);
+                }
+        }).unwrap();
+
+        self.thread = Some(thread);
     }
 
-    pub fn stop(&self){
-        *self.stop.lock().unwrap() = false;
+    pub fn stop(&mut self){
+        *self.stop.lock().unwrap() = true;
+        self.thread.take().map(thread::JoinHandle::join);
     }
 
     /// Checks to see if a datagram has been received. Returns None if it has not.
