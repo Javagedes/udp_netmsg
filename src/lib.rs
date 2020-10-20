@@ -1,6 +1,6 @@
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use std::net::UdpSocket;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::io::ErrorKind;
 use serde::de::DeserializeOwned;
@@ -53,7 +53,7 @@ pub struct NetMessenger {
     udp: ThreadSafe<UdpSocket>,
 
     /// Storage mechanism for datagrams
-    msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>,
+    msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>,
 
     /// The reserved size of buffer. Since this is a vec, it will expand if needed.
     recv_buffer_size_bytes: u16,
@@ -74,10 +74,10 @@ impl NetMessenger {
         };
             
         udp.set_nonblocking(false).unwrap();
-        udp.set_read_timeout(Some(time::Duration::from_millis(1000))).unwrap();
+        udp.set_read_timeout(Some(time::Duration::from_millis(250))).unwrap();
 
         let udp = ThreadSafe::from(udp);
-        let msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
+        let msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
 
         Ok(NetMessenger {
             udp,
@@ -117,7 +117,7 @@ impl NetMessenger {
     }
 
     //Tries to receive a Datagram from the socket. If no datagram is available, it simply returns.
-    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>, buffer_len: usize){
+    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize){
 
         let udp = udp.lock().unwrap();
         let mut msg_map = msg_map.lock().unwrap();
@@ -138,7 +138,7 @@ impl NetMessenger {
         let id: Vec<_> = buffer.drain(..4).collect();
         let id = BigEndian::read_u32(&id);
         let vec = msg_map.get_mut(&id).unwrap();
-        vec.push((addr, buffer));
+        vec.push_back((addr, buffer));
     }
 
     //TODO: Need to handle the .remove(0) error when vec is empty
@@ -146,9 +146,10 @@ impl NetMessenger {
         
         match self.msg_map.lock().unwrap().get_mut(&T::header()) {
             Some(data) => {
-                let (addr, vec) = &data.remove(0);
-                
-                return Some((*addr, serde_json::from_slice(vec).unwrap()))
+                match data.pop_front() {
+                    None => return None,
+                    Some((addr, vec)) => return Some((addr, serde_json::from_slice(&vec).unwrap()))
+                }
             },
             None => return None
         };
@@ -175,7 +176,7 @@ impl NetMessenger {
     /// To easily get the constructor, use STRUCT_NAME::from_buffer
     /// Don't include the parentheses! We are passing in the function, not calling it!
     pub fn register(&mut self, key: u32) {
-        self.msg_map.lock().unwrap().insert(key,Vec::new());
+        self.msg_map.lock().unwrap().insert(key,VecDeque::new());
     }
 }
 

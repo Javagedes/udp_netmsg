@@ -20,6 +20,7 @@ If you have any suggestions for this crate, let me know! If something is not cle
 ```rust
 use udp_netmsg::{NetMessenger, Datagram};
 use serde::{Serialize, Deserialize};
+use std::{thread, time};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct UpdatePos {
@@ -55,8 +56,7 @@ fn main() {
 
     //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
-    let recv_buffer_size_bytes = 100;
-    let mut net_msg = NetMessenger::new(source_ip,recv_buffer_size_bytes).unwrap();
+    let mut net_msg = NetMessenger::new(source_ip).unwrap();
 
     //register the structs so it knows how to read datagram!
     net_msg.register(UpdatePos::header());
@@ -71,7 +71,8 @@ fn main() {
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    net_msg.recv(true);
+    net_msg.start();
+    thread::sleep(time::Duration::from_millis(100));
 
     //notice that each message type is stored separately, so you can write handlers in your code that check for
     //specific message types.
@@ -86,7 +87,8 @@ fn main() {
         Err(e) => println!("datagram failed to send because: {}", e)
     }
 
-    net_msg.recv(true);
+    thread::sleep(time::Duration::from_millis(100));
+    net_msg.stop();
 
     let (_, update_pos_message) = net_msg.get::<UpdatePos>().unwrap();
 
@@ -95,7 +97,7 @@ fn main() {
 ```
 
 ### To do 
-- [ ] Allow users to choose serialization / deserialization methods. Do this by taking a Trait
+- [ ] Allow users to choose serialization / deserialization methods. Do this by taking a Trait? maybe with Fn()?
 - [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
 - [ ] Create a builder method for the NetMessenger so that we can eventually have the netmessenger start immediately when built
 - [ ] Set up the netmessenger such that it starts up during the ::Build() method and automatically stops itsself when it loses scope
