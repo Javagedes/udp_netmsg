@@ -26,7 +26,6 @@ mod struct_creation {
         net_msg.send(pos, String::from("127.0.0.1:39507")).unwrap();
 
         thread::sleep(time::Duration::from_millis(100));
-        net_msg.stop();
 
         net_msg.get::<UpdatePos>().unwrap();
     }

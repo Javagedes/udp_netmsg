@@ -25,11 +25,15 @@ pub struct UdpManager<T: SerDesType> {
     
     resource_type: PhantomData<T>,
 
-    recv_buffer_size_bytes: usize,
-
     stop: ThreadSafe<bool>,
 
     thread: Option<thread::JoinHandle<()>>
+}
+
+impl<T: SerDesType> Drop for UdpManager<T> {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 impl <T: SerDesType>UdpManager<T> {
@@ -38,7 +42,6 @@ impl <T: SerDesType>UdpManager<T> {
     fn new(builder: Builder<T>)->Result<UdpManager<T>, &'static str> {
 
         let source_ip = builder.source_ip;
-        let recv_buffer_size_bytes = builder.buffer_len;
         let read_timeout = builder.read_timeout;
         let resource_type = builder.resource_type;
 
@@ -56,18 +59,15 @@ impl <T: SerDesType>UdpManager<T> {
         Ok(UdpManager {
             udp,
             msg_map,
-            recv_buffer_size_bytes,
             stop: ThreadSafe::from(false),
             thread: None,
             resource_type
         })
     }
 
-    fn start(&mut self){
+    fn start(&mut self, buffer_len: usize){
 
         let udp = self.udp.clone();
-        //Due to how this is set up, the buffer size cant be changed after started
-        let buffer_len = self.recv_buffer_size_bytes as usize;
         let msg_map = self.msg_map.clone();
         let stop = self.stop.clone();
 
@@ -82,7 +82,7 @@ impl <T: SerDesType>UdpManager<T> {
         self.thread = Some(thread);
     }
 
-    pub fn stop(&mut self){
+    fn stop(&mut self){
         *self.stop.lock().unwrap() = true;
         self.thread.take().map(thread::JoinHandle::join);
     }
@@ -168,10 +168,10 @@ pub struct Builder<T: SerDesType> {
 
 impl <T: SerDesType>Builder<T> {
     
-    pub fn new()->Builder<T> {
+    pub fn new()->Builder<T> { 
         let buffer_len = 100;
         let source_ip = String::from("0.0.0.0:39507");
-        let read_timeout = Some(time::Duration::from_millis(250));
+        let read_timeout = Some(time::Duration::from_millis(50));
 
         return Builder {
             buffer_len,
@@ -197,9 +197,9 @@ impl <T: SerDesType>Builder<T> {
     }
 
     pub fn start(self)->UdpManager<T> {
+        let len = self.buffer_len;
         let mut man = UdpManager::new(self).unwrap();
-
-        man.start();
+        man.start(len);
 
         return man;
     }

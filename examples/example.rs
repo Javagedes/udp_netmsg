@@ -61,7 +61,6 @@ fn main() {
     }
 
     thread::sleep(time::Duration::from_millis(100));
-    net_msg.stop();
 
     let (_, update_pos_message) = net_msg.get::<UpdatePos>().unwrap();
 
