@@ -1,5 +1,5 @@
-use udp_netmsg::udpmanager::UdpManager;
-use udp_netmsg::datagram::Datagram;
+use udp_netmsg::udpmanager::{Builder, JSON};
+use udp_netmsg::datagram::{Datagram};
 use serde::{Serialize, Deserialize};
 use std::{thread, time};
 
@@ -12,10 +12,6 @@ struct UpdatePos {
 }
 
 impl Datagram for UpdatePos {
-    fn serial(&self)->Vec<u8> {
-        return serde_json::to_vec(self).unwrap();
-    }
-
     fn header()->u32 {return 834227670}
 }
 
@@ -26,10 +22,6 @@ struct CreateEntity {
 }
 
 impl Datagram for CreateEntity {
-    fn serial(&self)->Vec<u8> {
-        return serde_json::to_vec(self).unwrap();
-    }
-
     fn header()->u32 {return 505005}
 }
 
@@ -37,7 +29,7 @@ fn main() {
 
     //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
-    let mut net_msg = UdpManager::new(source_ip).unwrap();
+    let mut net_msg = Builder::<JSON>::new().source_ip(source_ip).start();
 
     //register the structs so it knows how to read datagram!
     net_msg.register(UpdatePos::header());

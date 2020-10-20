@@ -3,8 +3,10 @@ use std::net::UdpSocket;
 use std::collections::{HashMap, VecDeque};
 use std::io::ErrorKind;
 use serde::de::DeserializeOwned;
+use serde::ser::Serialize;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::{thread, time};
+use std::marker::PhantomData;
 
 use super::threadsafe::ThreadSafe;
 use super::datagram::Datagram;
@@ -14,25 +16,31 @@ use super::datagram::Datagram;
 /// or get it by message type.
 //We can store it as just a long vec of (u32, SocketAddr, Vec<u8>). Then we can get them in order or filter them
 //With maybe a map that only returns the correct ones based off the u32 identifier.
-pub struct UdpManager {
+pub struct UdpManager<T: SerDesType> {
     /// The socket that datagrams are received on
     udp: ThreadSafe<UdpSocket>,
 
     /// Storage mechanism for datagrams
     msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>,
-
+    
+    resource_type: PhantomData<T>,
     /// The reserved size of buffer. Since this is a vec, it will expand if needed.
-    recv_buffer_size_bytes: u16,
+    recv_buffer_size_bytes: usize,
 
     stop: ThreadSafe<bool>,
 
     thread: Option<thread::JoinHandle<()>>
 }
 
-impl UdpManager {
+impl <T: SerDesType>UdpManager<T> {
 
     /// Simple Constructor for the class
-    pub fn new(source_ip: String)->Result<UdpManager, &'static str> {
+    fn new(builder: Builder<T>)->Result<UdpManager<T>, &'static str> {
+
+        let source_ip = builder.source_ip;
+        let recv_buffer_size_bytes = builder.buffer_len;
+        let read_timeout = builder.read_timeout;
+        let resource_type = builder.resource_type;
 
         let udp: UdpSocket = match UdpSocket::bind(source_ip) {
             Ok(socket) => socket,
@@ -40,7 +48,7 @@ impl UdpManager {
         };
             
         udp.set_nonblocking(false).unwrap();
-        udp.set_read_timeout(Some(time::Duration::from_millis(250))).unwrap();
+        udp.set_read_timeout(read_timeout).unwrap();
 
         let udp = ThreadSafe::from(udp);
         let msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
@@ -48,14 +56,11 @@ impl UdpManager {
         Ok(UdpManager {
             udp,
             msg_map,
-            recv_buffer_size_bytes: 100,
+            recv_buffer_size_bytes,
             stop: ThreadSafe::from(false),
-            thread: None
+            thread: None,
+            resource_type
         })
-    }
-
-    pub fn set_buffer_size(&mut self, recv_buffer_size_bytes: u16) {
-        self.recv_buffer_size_bytes = recv_buffer_size_bytes;
     }
 
     pub fn start(&mut self){
@@ -70,7 +75,7 @@ impl UdpManager {
             .name(String::from("thread_udp_listener"))
             .spawn( move || {
                 while *stop.lock().unwrap() == false {
-                    UdpManager::try_recv(udp.clone(), msg_map.clone(), buffer_len);
+                    Self::try_recv(udp.clone(), msg_map.clone(), buffer_len);
                 }
         }).unwrap();
 
@@ -83,8 +88,8 @@ impl UdpManager {
     }
 
     //Tries to receive a Datagram from the socket. If no datagram is available, it simply returns.
-    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize){
-
+    //fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize){
+    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize) {
         let udp = udp.lock().unwrap();
         let mut msg_map = msg_map.lock().unwrap();
 
@@ -108,13 +113,18 @@ impl UdpManager {
     }
 
     //TODO: Need to handle the .remove(0) error when vec is empty
-    pub fn get<T: Datagram + DeserializeOwned >(&mut self)->Option<(SocketAddr, T)> {
+    pub fn get<J: Datagram + DeserializeOwned >(&mut self)->Option<(SocketAddr, J)> {
         
-        match self.msg_map.lock().unwrap().get_mut(&T::header()) {
+        match self.msg_map.lock().unwrap().get_mut(&J::header()) {
             Some(data) => {
                 match data.pop_front() {
                     None => return None,
-                    Some((addr, vec)) => return Some((addr, serde_json::from_slice(&vec).unwrap()))
+                    Some((addr, vec)) => {
+                        match T::deserial(&vec) {
+                            Ok(obj) => return Some((addr,obj)),
+                            Err(_) => return None
+                        }
+                    }
                 }
             },
             None => return None
@@ -122,10 +132,13 @@ impl UdpManager {
     }
 
     /// Sends datagram (with header) to dest_addr
-    pub fn send<T: Datagram, A: ToSocketAddrs>(&self, datagram: T, dest_addr: A)->Result<(),String> {
+    pub fn send<J: Serialize + Datagram, A: ToSocketAddrs>(&self, datagram: J, dest_addr: A)->Result<(),String> {
 
         let mut wtr: Vec<u8> = vec![];
-        let mut payload = datagram.serial();
+        let mut payload = match T::serial(&datagram) {
+            Ok(obj) => obj,
+            Err(_) => return Err(String::from("could not serialize data"))
+        };
 
         wtr.write_u32::<BigEndian>(datagram.get_header()).unwrap();
 
@@ -146,3 +159,65 @@ impl UdpManager {
     }
 }
 
+pub struct Builder<T: SerDesType> {
+    buffer_len: usize,
+    source_ip: String,
+    read_timeout: Option<std::time::Duration>,
+    resource_type: PhantomData<T>
+}
+
+impl <T: SerDesType>Builder<T> {
+    
+    pub fn new()->Builder<T> {
+        let buffer_len = 100;
+        let source_ip = String::from("0.0.0.0:39507");
+        let read_timeout = Some(time::Duration::from_millis(250));
+
+        return Builder {
+            buffer_len,
+            source_ip,
+            read_timeout,
+            resource_type: PhantomData
+        }
+    }
+
+    pub fn buffer_len(mut self, len: usize) -> Builder<T> {
+        self.buffer_len = len;
+        return self;
+    }
+
+    pub fn read_timeout(mut self, read_timeout: Option<std::time::Duration>) -> Builder<T> {
+        self.read_timeout = read_timeout;
+        return self;
+    }
+
+    pub fn source_ip(mut self, source_ip: String)-> Builder<T> {
+        self.source_ip = source_ip;
+        return self;
+    }
+
+    pub fn start(self)->UdpManager<T> {
+        return UdpManager::new(self).unwrap();
+    }
+}
+
+pub trait SerDesType {
+    type Error;
+
+    fn serial<T: ?Sized + Serialize>(obj: &T) -> Result<Vec<u8>, Self::Error>;
+
+    fn deserial<T: DeserializeOwned>(v: &'_ [u8]) -> Result<T, Self::Error>;
+}
+
+pub struct JSON;
+impl SerDesType for JSON {
+    type Error = serde_json::Error;
+
+    fn serial<T: ?Sized + Serialize>(obj: &T) -> Result<Vec<u8>, Self::Error> {
+        return serde_json::to_vec(obj);
+    }
+
+    fn deserial<T: DeserializeOwned>(v: &'_ [u8])-> Result<T, Self::Error> {
+        return serde_json::from_slice(v);
+    }
+}

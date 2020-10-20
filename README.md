@@ -18,58 +18,30 @@ If you have any suggestions for this crate, let me know! If something is not cle
 
 ### Example
 ```rust
-use udp_netmsg::{NetMessenger, Datagram};
-use serde::{Serialize, Deserialize};
-use std::{thread, time};
-
-#[derive(Serialize, Deserialize, Debug)]
-struct UpdatePos {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub text: String
-}
-
-impl Datagram for UpdatePos {
-    fn serial(&self)->Vec<u8> {
-        return serde_json::to_vec(self).unwrap();
+#[derive(Serialize, Deserialize)]
+    struct UpdatePos {
+        pub x: f32,
+        pub y: f32,
+        pub z: f32
     }
 
-    fn header()->u32 {return 834227670}
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct CreateEntity {
-    pub entity_type: String,
-    pub location: (f32, f32, f32),
-}
-
-impl Datagram for CreateEntity {
-    fn serial(&self)->Vec<u8> {
-        return serde_json::to_vec(self).unwrap();
+    impl Datagram for UpdatePos {
+        fn header()->u32 {return 834227670}
     }
 
-    fn header()->u32 {return 505005}
-}
-
-fn main() {
-
-        let mut net_msg = NetMessenger::new(
-            String::from("0.0.0.0:12004")
-        ).unwrap();
+    fn main() {
+        let mut net_msg = Builder::<JSON>::new().start();
 
         net_msg.register(UpdatePos::header());
-
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
-        net_msg.send(pos, String::from("127.0.0.1:12004")).unwrap();
+        net_msg.send(pos, String::from("127.0.0.1:39507")).unwrap();
 
         net_msg.start();
-        //This gives time for the message to be read before immediately shutting it down
         thread::sleep(time::Duration::from_millis(100));
         net_msg.stop();
 
         net_msg.get::<UpdatePos>().unwrap();
-}
+    }
 ```
 
 ### To do 
