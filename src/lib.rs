@@ -1,11 +1,11 @@
-use byteorder::{BigEndian,WriteBytesExt,ReadBytesExt};
+use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use std::net::UdpSocket;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::io::{Cursor, ErrorKind};
+use std::io::ErrorKind;
 use serde::de::DeserializeOwned;
 use std::net::{ToSocketAddrs, SocketAddr};
-use std::thread;
+use std::{thread, time};
 
 pub struct ThreadSafe<T> {
     obj: Arc<Mutex<T>>
@@ -45,6 +45,9 @@ pub trait Datagram {
 /// This is the struct that the user will use for sending and receiving datagrams
 ///TODO: Change the way messages are stored so that user can chose to either get the next message in time received
 /// or get it by message type.
+
+//We can store it as just a long vec of (u32, SocketAddr, Vec<u8>). Then we can get them in order or filter them
+//With maybe a map that only returns the correct ones based off the u32 identifier.
 pub struct NetMessenger {
     /// The socket that datagrams are received on
     udp: ThreadSafe<UdpSocket>,
@@ -70,7 +73,8 @@ impl NetMessenger {
             Err(_) => return Err("Failed to bind to socket")
         };
             
-        udp.set_nonblocking(true).unwrap();
+        udp.set_nonblocking(false).unwrap();
+        udp.set_read_timeout(Some(time::Duration::from_millis(1000))).unwrap();
 
         let udp = ThreadSafe::from(udp);
         let msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
@@ -91,6 +95,7 @@ impl NetMessenger {
     pub fn start(&mut self){
 
         let udp = self.udp.clone();
+        //Due to how this is set up, the buffer size cant be changed after started
         let buffer_len = self.recv_buffer_size_bytes as usize;
         let msg_map = self.msg_map.clone();
         let stop = self.stop.clone();
@@ -99,7 +104,7 @@ impl NetMessenger {
             .name(String::from("thread_udp_listener"))
             .spawn( move || {
                 while *stop.lock().unwrap() == false {
-                    NetMessenger::recv(udp.clone(), msg_map.clone(), buffer_len,false);
+                    NetMessenger::try_recv(udp.clone(), msg_map.clone(), buffer_len);
                 }
         }).unwrap();
 
@@ -111,54 +116,38 @@ impl NetMessenger {
         self.thread.take().map(thread::JoinHandle::join);
     }
 
-    /// Checks to see if a datagram has been received. Returns None if it has not.
-    /// If data has been received, it removes the header_id and gets the constructor for the
-    /// matched datagram struct.
-    /// If 'ignore_payload_len' = true, it won't pass payload len (u32) to the datagram constructor
-    /// passes remaining buffer to specific datagram constructor and returns struct
-    pub fn recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>, buffer_len: usize, blocking: bool ){
+    //Tries to receive a Datagram from the socket. If no datagram is available, it simply returns.
+    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, Vec<(SocketAddr, Vec<u8>)>>>, buffer_len: usize){
 
         let udp = udp.lock().unwrap();
         let mut msg_map = msg_map.lock().unwrap();
 
-        if blocking {
-            udp.set_nonblocking(false).unwrap();
-        }
-
-        let mut buffer: Vec<u8> = Vec::new();
-        buffer.reserve(buffer_len);
-        buffer = vec![0; buffer_len];
+        let mut buffer: Vec<u8> = vec![0; buffer_len];
 
         let (num_bytes, addr) =  match udp.recv_from(&mut buffer){
             Ok(n) => { n },
             Err(e)=> {
-                if e.kind() == ErrorKind::WouldBlock {}
-                else {println!("{}",e);}
+                if e.kind() == ErrorKind::WouldBlock {} //Unix response
+                else if e.kind() == ErrorKind::TimedOut {}//Windows Response
+                else {println!("{}",e);} //Prints this to screen instead of crashing for one fail read
 
                 return; } //Break out of function if we received no bytes
         };
 
-        buffer.resize(num_bytes,0);
-        if blocking {udp.set_nonblocking(true).unwrap();}
-
-        let mut rdr = Cursor::new(buffer);
-        let id = rdr.read_u32::<BigEndian>().unwrap();
-        let mut data = rdr.into_inner();
-        data.remove(0);
-        data.remove(0);
-        data.remove(0);
-        data.remove(0);
-
+        buffer.truncate(num_bytes);
+        let id: Vec<_> = buffer.drain(..4).collect();
+        let id = BigEndian::read_u32(&id);
         let vec = msg_map.get_mut(&id).unwrap();
-        vec.push((addr, data));
+        vec.push((addr, buffer));
     }
 
-    //TODO: Need to handle the .remote(0) error when vec is empty
+    //TODO: Need to handle the .remove(0) error when vec is empty
     pub fn get<T: Datagram + DeserializeOwned >(&mut self)->Option<(SocketAddr, T)> {
         
         match self.msg_map.lock().unwrap().get_mut(&T::header()) {
             Some(data) => {
                 let (addr, vec) = &data.remove(0);
+                
                 return Some((*addr, serde_json::from_slice(vec).unwrap()))
             },
             None => return None

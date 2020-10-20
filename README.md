@@ -95,6 +95,9 @@ fn main() {
 ```
 
 ### To do 
-- [ ] refactor complexity of receiving a message
-- [ ] Allow users to choose serialization / deserialization methods
+- [ ] Allow users to choose serialization / deserialization methods. Do this by taking a Trait
 - [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
+- [ ] Create a builder method for the NetMessenger so that we can eventually have the netmessenger start immediately when built
+- [ ] Set up the netmessenger such that it starts up during the ::Build() method and automatically stops itsself when it loses scope
+- [ ] Allow user to decide what Endianness that data is sent as.
+- [ ] Allow user to set the timeout time (lower timeout time = faster response to close, but more resources used)
