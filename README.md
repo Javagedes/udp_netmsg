@@ -49,3 +49,4 @@ If you have any suggestions for this crate, let me know! If something is not cle
 - [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
 - [ ] Set up the netmessenger such that it starts up during the ::start() method of the builder helper and automatically stops itsself when it loses scope
 - [ ] Allow user to decide what Endianness that data is sent as.
+- [ ] Change the way messages are stored so that user can chose to either get the next message in time received or get it by message type. Issue with providing the data to the user. We can store it as just a long vec of (u32,SocketAddr, Vec<u8>). Then we can get them in order or filter them With maybe a map that only returns the correct ones based off the u32 identifier.

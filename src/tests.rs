@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod struct_creation {
-    use crate::datagram::Datagram;
+    use crate::serdes::{Datagram, JSON};
     use crate::udpmanager::{Builder};
-    use crate::serdes::{JSON};
     use serde::{Serialize, Deserialize};
     use std::{thread, time};
 

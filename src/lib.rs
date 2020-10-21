@@ -1,7 +1,12 @@
-pub mod datagram;
-pub mod udpmanager;
-mod threadsafe;
+///Traits used for implementing SerDes formats and operations
 pub mod serdes;
 
-pub mod tests;
+///UDP Manager and associated Methods
+pub mod udpmanager;
+
+//Convenience re-export of common members
+pub mod prelude;
+
+mod threadsafe;
+mod tests;
 
