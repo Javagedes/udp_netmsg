@@ -18,7 +18,7 @@ mod struct_creation {
     }
 
     #[test]
-    fn test_manuel() {
+    fn test_manual() {
         let mut net_msg = Builder::init().start_manuel::<JSON>();
 
         net_msg.register(UpdatePos::header());

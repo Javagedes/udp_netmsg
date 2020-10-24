@@ -7,6 +7,7 @@ use serde::ser::Serialize;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::thread;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use crate::threadsafe::ThreadSafe;
 use crate::serdes::SerDesType;
@@ -27,7 +28,7 @@ pub trait Datagram {
 /// without interrupting other functionality
 pub struct UdpManager<T: SerDesType> {
 
-    udp: ThreadSafe<UdpSocket>,
+    udp: Arc<UdpSocket>,
 
     msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>,
     
@@ -64,7 +65,7 @@ impl <T: SerDesType>UdpManager<T> {
         udp.set_nonblocking(non_blocking).unwrap();
         udp.set_read_timeout(read_timeout).unwrap();
 
-        let udp = ThreadSafe::from(udp);
+        let udp = Arc::from(udp);
         let msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
 
         Ok(UdpManager {
@@ -80,7 +81,6 @@ impl <T: SerDesType>UdpManager<T> {
     pub fn start(&mut self, buffer_len: usize){
 
         let udp = self.udp.clone();
-
         let msg_map = self.msg_map.clone();
         let stop = self.stop.clone();
 
@@ -103,8 +103,7 @@ impl <T: SerDesType>UdpManager<T> {
 
     /// Tries to receive a Datagram from the socket. If no datagram is available, will either return, or sit and wait
     /// depending on if the underlying UDPSocket was set to non_blocking or not
-    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize) {
-        let udp = udp.lock().unwrap();
+    fn try_recv(udp: Arc<UdpSocket>, msg_map: ThreadSafe<HashMap<u32, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize) {
         let mut msg_map = msg_map.lock().unwrap();
 
         let mut buffer: Vec<u8> = vec![0; buffer_len];
@@ -159,7 +158,7 @@ impl <T: SerDesType>UdpManager<T> {
 
         wtr.append(&mut payload);
 
-        match self.udp.lock().unwrap().send_to(&wtr, dest_addr) {
+        match self.udp.send_to(&wtr, dest_addr) {
             Ok(_) => return Ok(()),
             Err(e)=> return Err(e.to_string()),
         }

@@ -9,6 +9,8 @@ use std::thread;
 use std::marker::PhantomData;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
+use std::any::TypeId;
 
 use crate::threadsafe::ThreadSafe;
 use crate::serdes::SerDesType;
@@ -18,17 +20,15 @@ use crate::managers::Builder;
 /// without interrupting other functionality
 pub struct UdpManager<T: SerDesType> {
 
-    udp: ThreadSafe<UdpSocket>,
+    udp: Arc<UdpSocket>,
 
-    msg_map: ThreadSafe<HashMap<u64, VecDeque<(SocketAddr, Vec<u8>)>>>,
+    msg_map: Arc<MsgStorage>,
     
     resource_type: PhantomData<T>,
 
     stop: ThreadSafe<bool>,
 
     thread: Option<thread::JoinHandle<()>>,
-
-    id_storage: ThreadSafe<IdStorage>
 }
 
 /// Allows the background thread to safely shutdown when the struct loses scope or program shutsdown
@@ -53,21 +53,18 @@ impl <T: SerDesType>UdpManager<T> {
             Ok(socket) => socket,
             Err(_) => return Err("Failed to bind to socket")
         };
-        
+        let udp = Arc::from(udp);
         udp.set_nonblocking(non_blocking).unwrap();
         udp.set_read_timeout(read_timeout).unwrap();
 
-        let udp = ThreadSafe::from(udp);
-        let msg_map: ThreadSafe<HashMap<u64, VecDeque<(SocketAddr, Vec<u8>)>>> = ThreadSafe::from(HashMap::new());
-        let id_storage = ThreadSafe::from(IdStorage::new());
+        let msg_map = Arc::from(MsgStorage::new());
 
         Ok(UdpManager {
             udp,
-            msg_map,
             stop: ThreadSafe::from(false),
             thread: None,
-            id_storage,
-            resource_type
+            resource_type,
+            msg_map
         })
     }
 
@@ -97,9 +94,7 @@ impl <T: SerDesType>UdpManager<T> {
 
     /// Tries to receive a Datagram from the socket. If no datagram is available, will either return, or sit and wait
     /// depending on if the underlying UDPSocket was set to non_blocking or not
-    fn try_recv(udp: ThreadSafe<UdpSocket>, msg_map: ThreadSafe<HashMap<u64, VecDeque<(SocketAddr, Vec<u8>)>>>, buffer_len: usize) {
-        let udp = udp.lock().unwrap();
-        let mut msg_map = msg_map.lock().unwrap();
+    fn try_recv(udp: Arc<UdpSocket>, msg_map: Arc<MsgStorage>, buffer_len: usize) {
         //let id_storage = id_storage.lock().unwrap();
 
         let mut buffer: Vec<u8> = vec![0; buffer_len];
@@ -118,39 +113,13 @@ impl <T: SerDesType>UdpManager<T> {
         let id: Vec<_> = buffer.drain(..8).collect();
         let id = BigEndian::read_u64(&id);
 
-        match msg_map.get_mut(&id) {
-            Some(vec) => {
-                vec.push_back((addr, buffer));
-            }
-            None => {
-                let mut vec = VecDeque::new();
-                vec.push_back((addr, buffer));
-                msg_map.insert(id, vec);
-            }
-        }
-
+        msg_map.add_msg(id, addr, buffer);
     }
 
     /// Provides the user with the oldest datagram of the specified type, if one exists. Otherwise
     /// returns None. Provides the deserialized object and the return address to the user
     pub fn get<J:DeserializeOwned + 'static>(&self)->Option<(SocketAddr, J)> {
-        let mut id_storage = self.id_storage.lock().unwrap();
-        let id = id_storage.get_id::<J>();
-
-        match self.msg_map.lock().unwrap().get_mut(&id) {
-            Some(data) => {
-                match data.pop_front() {
-                    None => return None,
-                    Some((addr, vec)) => {
-                        match T::deserial(&vec) {
-                            Ok(obj) => return Some((addr,obj)),
-                            Err(_) => return None
-                        }
-                    }
-                }
-            },
-            None => return None
-        };
+        return self.msg_map.get_obj::<T,J>();
     }
 
     /// Deserializes the datagram, appends the ID, and sends to requested location
@@ -162,36 +131,75 @@ impl <T: SerDesType>UdpManager<T> {
             Err(_) => return Err(String::from("could not serialize data"))
         };
 
-        let mut id_storage = self.id_storage.lock().unwrap();
-        let id = id_storage.get_id::<J>();
+        let id = self.msg_map.get_id::<J>();
 
         wtr.write_u64::<BigEndian>(id).unwrap();
 
         wtr.append(&mut payload);
 
-        match self.udp.lock().unwrap().send_to(&wtr, dest_addr) {
+        match self.udp.send_to(&wtr, dest_addr) {
             Ok(_) => return Ok(()),
             Err(e)=> return Err(e.to_string()),
         }
     }
 }
 
-use std::any::TypeId;
-pub struct IdStorage {
-    id: HashMap<TypeId, u64>
+pub struct MsgStorage {
+    msgs: Mutex<HashMap<u64, VecDeque<(SocketAddr, Vec<u8>)>>>,
+    ids: Mutex<HashMap<TypeId, u64>>
 }
 
-impl IdStorage {
+impl MsgStorage {
+    /// Change this to Result
+    fn get_obj<T: SerDesType, J:DeserializeOwned + 'static>(&self)->Option<(SocketAddr, J)> {
+        
+        let id = self.get_id::<J>();
+        let mut msgs = self.msgs.lock().unwrap();
 
-    pub fn get_id<T: 'static>(&mut self)->u64 {
+        match msgs.get_mut(&id) {
+            Some(vec) => {
+                match vec.pop_front() {
+                    Some((addr, vec)) => {
+                        match T::deserial(&vec){
+                            Ok(obj) => {
+                                return Some((addr, obj))
+                            },
+                            Err(_) => return None
+                        }
+                    },
+                    None => return None
+                }
+            },
+            None => None
+        }
+    }
+
+    fn add_msg(&self, id: u64, addr: SocketAddr, buffer: Vec<u8>) {
+        
+        let mut msgs = self.msgs.lock().unwrap();
+        
+        match msgs.get_mut(&id) {
+            Some(vec) => {
+                vec.push_back((addr, buffer));
+            }
+            None => {
+                let mut vec = VecDeque::new();
+                vec.push_back((addr, buffer));
+                msgs.insert(id, vec);
+            }
+        }
+    }
+
+    fn get_id<T: 'static>(&self)->u64 {
         
         let id = std::any::TypeId::of::<T>();
+        let mut ids = self.ids.lock().unwrap();
 
-        match self.id.get(&id) {
+        match ids.get(&id) {        
             Some(val) => return *val,
             None => {
-                let obj = IdStorage::calculate_hash::<T>();
-                self.id.insert(id, obj);
+                let obj = MsgStorage::calculate_hash::<T>();
+                ids.insert(id, obj);
                 return obj;
             }
         }
@@ -204,11 +212,13 @@ impl IdStorage {
         return hasher.finish();
     }
 
-    pub fn new()->IdStorage {
-        let id = HashMap::new();
+    fn new()->MsgStorage {
+        let ids = Mutex::from(HashMap::new());
+        let msgs = Mutex::from(HashMap::new());
 
-        return IdStorage {
-            id
+        return MsgStorage {
+            ids,
+            msgs
         }
     }
 }

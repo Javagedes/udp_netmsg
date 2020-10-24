@@ -1,6 +1,6 @@
 /// Contains Udp Manager that allows user to choose the header value for datagrams
 pub mod manual;
-/// Contains Udp Manager that automatically chooses the header value for datagramas
+/// Contains Udp Manager that automatically chooses the header value for datagrams
 pub mod automatic;
 
 use crate::serdes::SerDesType;
