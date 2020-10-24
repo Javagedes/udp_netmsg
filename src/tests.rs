@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod struct_creation {
-    use crate::serdes::{Datagram, JSON};
-    use crate::udpmanager::{Builder};
+    use crate::serdes::JSON;
+    use crate::managers::Builder;
+    use crate::managers::manual::Datagram;
     use serde::{Serialize, Deserialize};
     use std::{thread, time};
 
@@ -17,13 +18,26 @@ mod struct_creation {
     }
 
     #[test]
-    fn send_receive_data() {
-        let mut net_msg = Builder::<JSON>::new().start();
+    fn test_manuel() {
+        let mut net_msg = Builder::init().start_manuel::<JSON>();
 
         net_msg.register(UpdatePos::header());
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:39507")).unwrap();
 
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.get::<UpdatePos>().unwrap();
+    }
+
+    #[test]
+    fn test_automatic() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50000"))
+            .start_automatic::<JSON>();  
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50000")).unwrap();
+    
         thread::sleep(time::Duration::from_millis(100));
 
         net_msg.get::<UpdatePos>().unwrap();

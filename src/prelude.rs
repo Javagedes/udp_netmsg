@@ -1,2 +1,2 @@
-pub use crate::udpmanager::Builder;
-pub use crate::serdes::{JSON, Datagram};
+pub use crate::managers::Builder;
+pub use crate::serdes::JSON;

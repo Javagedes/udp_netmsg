@@ -10,29 +10,16 @@ struct UpdatePos {
     pub text: String
 }
 
-impl Datagram for UpdatePos {
-    fn header()->u32 {return 834227670}
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 struct CreateEntity {
     pub entity_type: String,
     pub location: (f32, f32, f32),
 }
 
-impl Datagram for CreateEntity {
-    fn header()->u32 {return 505005}
-}
-
 fn main() {
-
     //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
-    let mut net_msg = Builder::<JSON>::new().socket(source_ip).start();
-
-    //register the structs so it knows how to read datagram!
-    net_msg.register(UpdatePos::header());
-    net_msg.register(CreateEntity::header());
+    let mut net_msg = Builder::init().socket(source_ip).start_automatic::<JSON>();
     
     let dest_ip = String::from("127.0.0.1:12000");
 
@@ -45,8 +32,6 @@ fn main() {
 
     thread::sleep(time::Duration::from_millis(100));
 
-    //notice that each message type is stored separately, so you can write handlers in your code that check for
-    //specific message types.
     let (from_addr, create_entity_message) = net_msg.get::<CreateEntity>().unwrap();
 
     println!("Message Received!: {:?}", create_entity_message);
