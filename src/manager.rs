@@ -227,13 +227,33 @@ impl <T: SerDesType>UdpManager<T> {
     /// 
     /// # Errors
     /// 
-    /// returns error when the vector is empty.
+    /// Returns error when the vector is empty or the data could not be deserialized.
     /// 
     /// # Panics
     /// 
     /// This will panic if the lock becomes poisioned.
-    pub fn get<J: de::DeserializeOwned + 'static>(&self)->Result<(SocketAddr, J), std::io::Error> {
+    pub fn get<J>(&self)->Result<(SocketAddr, J), std::io::Error>
+        where J: de::DeserializeOwned + 'static
+    {
         return self.msg_map.get_obj::<T,J>();
+    }
+
+    /// Gets all objects of the requested type
+    /// 
+    /// Drains the vector containing the serialized objects. Deserializes each object
+    /// and returns a vector containing the return SocketAddr and the object.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error when the vector is empty or the data could not be deserialized
+    /// 
+    /// # Panics
+    /// 
+    /// This will panic if the lock becomes poisioned.
+    pub fn get_all<J>(&self)->Result<Vec<(std::net::SocketAddr, J)>, std::io::Error>
+        where J: de::DeserializeOwned + 'static
+    {
+        return self.msg_map.get_obj_all::<T,J>();
     }
 
     /// Deserializes the datagram, appends the ID, and sends to requested location.
@@ -283,7 +303,9 @@ struct MsgStorage {
 #[doc(hidden)]
 impl MsgStorage {
     
-    fn get_obj<T: SerDesType, J: de::DeserializeOwned + 'static>(&self)->Result<(SocketAddr, J), std::io::Error> {
+    fn get_obj<T, J>(&self)->Result<(SocketAddr, J), std::io::Error> 
+        where T: SerDesType, J: de::DeserializeOwned + 'static
+    {
         
         let id = self.get_id::<J>();
         let mut msgs = self.msgs.lock().unwrap();
@@ -296,12 +318,41 @@ impl MsgStorage {
                             Ok(obj) => {
                                 return Ok((addr, obj))
                             },
-                            Err(_) => return Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+                            Err(_) => return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not be deserialized"))
                         }
                     },
                     None => return Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
                 }
             },
+            None => Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+        }
+    }
+
+    fn get_obj_all<T, J>(&self) -> Result<Vec<(SocketAddr, J)>, std::io::Error>
+        where T: SerDesType, J: de::DeserializeOwned + 'static
+    {
+        let id = self.get_id::<J>();
+        let mut msgs = self.msgs.lock().unwrap();
+
+        match msgs.get_mut(&id) {
+            Some(vec) => {
+                let x: Vec<(SocketAddr, J)> = vec
+                    .drain(..)
+                    .into_iter()
+                    .filter_map(|(addr, vec)| 
+                    {
+                        match T::deserial(&vec) 
+                        {
+                            Ok(obj) => return Some((addr, obj)),
+                            Err(_) => return None
+                        }  
+                    })
+                    .collect();
+                
+                    if x.len() > 0 {return Ok(x)}
+                    return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not Deserialize the data"))
+                
+            }
             None => Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
         }
     }
@@ -322,7 +373,9 @@ impl MsgStorage {
         }
     }
 
-    fn get_id<T: 'static>(&self)->u64 {
+    fn get_id<T>(&self)->u64 
+        where T: 'static
+    {
         
         let id = std::any::TypeId::of::<T>();
         let mut ids = self.ids.lock().unwrap();
@@ -337,7 +390,9 @@ impl MsgStorage {
         }
     }
 
-    fn calculate_hash<T: 'static>()->u64 {
+    fn calculate_hash<T>()->u64 
+        where T: 'static
+    {
         let mut hasher = hash_map::DefaultHasher::new();
         let x = std::any::TypeId::of::<T>();
         x.hash(&mut hasher);

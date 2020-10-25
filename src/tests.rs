@@ -26,7 +26,7 @@ mod struct_creation {
     }
 
     #[test]
-    fn test_automatic() {
+    fn automatic() {
         let mut net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50000"))
             .start::<JSON>()
@@ -40,7 +40,7 @@ mod struct_creation {
     }
 
     #[test]
-    fn test_bincode() {
+    fn bincode_serdes() {
         let mut net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50001"))
             .start::<Bincode>()
@@ -54,7 +54,7 @@ mod struct_creation {
     }
 
     #[test]
-    fn test_yaml() {
+    fn yaml_serdes() {
         
         let mut net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50002"))
@@ -66,6 +66,24 @@ mod struct_creation {
         thread::sleep(time::Duration::from_millis(100));
 
         net_msg.get::<UpdatePos>().unwrap();
+    }
+
+    #[test]
+    fn get_multiple_at_once() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50003"))
+            .start::<YAML>()
+            .unwrap(); 
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50003")).unwrap();
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50003")).unwrap();
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50003")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        assert_eq!(net_msg.get_all::<UpdatePos>().unwrap().len(), 3);
     }
 }
 
