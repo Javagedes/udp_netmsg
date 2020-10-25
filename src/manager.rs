@@ -394,7 +394,7 @@ impl <T>UdpManager<T>
     /// # Panics
     /// 
     /// This will panic if the lock becomes poisioned.
-    pub fn send<J, A>(&mut self, datagram: J, dest_addr: A)->Result<(),std::io::Error> 
+    pub fn send<J, A>(&self, datagram: J, dest_addr: A)->Result<(),std::io::Error> 
         where J: ser::Serialize + 'static, A: ToSocketAddrs
     {
 
@@ -604,8 +604,11 @@ impl MsgStorage {
         where T: 'static
     {
         let mut hasher = hash_map::DefaultHasher::new();
-        let x = std::any::TypeId::of::<T>();
-        x.hash(&mut hasher);
+        std::any::type_name::<T>()
+            .split("::")
+            .collect::<Vec<_>>()
+            .pop()
+            .hash(&mut hasher);
         return hasher.finish();
     }
 

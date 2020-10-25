@@ -19,7 +19,7 @@ mod struct_creation {
 
     #[test]
     fn test_manual() {
-        let mut net_msg = Builder::init().start::<JSON>().unwrap();
+        let net_msg = Builder::init().start::<JSON>().unwrap();
 
         net_msg.set_id::<UpdatePos>(505550550);
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
@@ -34,7 +34,7 @@ mod struct_creation {
 
     #[test]
     fn automatic() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50000"))
             .start::<JSON>()
             .unwrap(); 
@@ -51,7 +51,7 @@ mod struct_creation {
 
     #[test]
     fn bincode_serdes() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50001"))
             .start::<Bincode>()
             .unwrap(); 
@@ -69,7 +69,7 @@ mod struct_creation {
     #[test]
     fn yaml_serdes() {
         
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50002"))
             .start::<YAML>()
             .unwrap(); 
@@ -86,7 +86,7 @@ mod struct_creation {
 
     #[test]
     fn get_multiple_at_once() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50003"))
             .start::<YAML>()
             .unwrap(); 
@@ -107,7 +107,7 @@ mod struct_creation {
 
     #[test]
     fn peek() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50004"))
             .start::<YAML>()
             .unwrap(); 
@@ -130,7 +130,7 @@ mod struct_creation {
 
     #[test]
     fn no_ids_succeed() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50005"))
             .use_ids(false)
             .start::<JSON>()
@@ -147,7 +147,7 @@ mod struct_creation {
     #[test]
     #[should_panic]
     fn no_ids_panic() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50006"))
             .use_ids(false)
             .start::<JSON>()
@@ -165,7 +165,7 @@ mod struct_creation {
 
     #[test]
     fn fail_des_keep_item() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50007"))
             .use_ids(false)
             .start::<JSON>()
@@ -186,7 +186,7 @@ mod struct_creation {
 
     #[test]
     fn remove_front() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50008"))
             .use_ids(false)
             .start::<JSON>()
@@ -209,7 +209,7 @@ mod struct_creation {
 
     #[test]
     fn remove_all() {
-        let mut net_msg = Builder::init()
+        let net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50009"))
             .start::<YAML>()
             .unwrap(); 

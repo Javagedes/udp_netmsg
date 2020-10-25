@@ -2,7 +2,15 @@
 //! 
 //! If you're looking to easily send and receive Udp Messages then this crate is perfect for you. 
 //! This gives you the ability to define your own Net Messages by simply creating a struct
-//! and implementing a trait.
+//! and implementing a trait. The datagrams can be sent with or without a prepended id, and the id can
+//! be created automatically or manually. 
+//! 
+//! Automatic id generation relies on the name of the datagram, not the layout, so make sure to name 
+//! the datagram structs the same between programs. Additionally, the id generator relies on the hashmap 
+//! hasher, so using different rust versions between programs may change the generated id even if the 
+//! names are the same (if the rust versions differ in how the hasher works). Automatic id generation is 
+//! provided for convenience. It is suggested that you define your own id for each datagram using the set_id 
+//! method. 
 //! 
 //! ## Formats
 //!    
