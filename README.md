@@ -10,14 +10,12 @@ and implementing a trait.
 - All methods are &self making it easy to use in a multi-threaded situation. Handles interior mutability with locks.
 - Relies on Serde for Serialization and Deserialization.
 - Can Serialize/Deserialize any struct that implements Serde's Serialization & Deserialization traits.
-- Any format that is implemented for Serde works for this crate. For convenience, JSON, Bincode, and YAML are implemented within the crate (It's simple to implement others, see examples [here]).
+- Any format that is implemented for Serde works for this crate. For convenience, JSON, Bincode, and YAML are implemented within the crate (It's simple to implement others, see examples [here](https://github.com/Javagedes/udp_netmsg/blob/master/src/serdes.rs).
 - Runs a listener on a second thread that listens for incoming Udp Messages.
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
 as it uses a vector as a buffer. In my light testing, sending/receiving max size udp datagrams
 (65k bytes), it is about 30% slower than if you were to use an array.
-[here]: https://github.com/Javagedes/udp_netmsg/blob/master/src/serdes.rs
-If you have suggestions or questions for this crate, raise an [issue]!
-[issue]: https://github.com/Javagedes/udp_netmsg/issues
+If you have suggestions or questions for this crate, raise an [issue](https://github.com/Javagedes/udp_netmsg/issues)!
 
 ### Example
 ```rust
