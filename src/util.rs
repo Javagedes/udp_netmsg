@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-///Helper struct for wrapping Arc<Mutex<T>> to help with readibility
+#[doc(hidden)]
 pub struct ThreadSafe<T> {
     obj: Arc<Mutex<T>>
 }

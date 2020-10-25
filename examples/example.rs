@@ -18,7 +18,7 @@ struct CreateEntity {
 fn main() {
     //source_ip and dest_ip are the same so we don't have to spin up a server and client
     let source_ip = String::from("0.0.0.0:12000");
-    let mut net_msg = Builder::init().socket(source_ip).start::<JSON>();
+    let mut net_msg = Builder::init().socket(source_ip).start::<JSON>().unwrap();
     
     let dest_ip = String::from("127.0.0.1:12000");
 

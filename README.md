@@ -31,11 +31,10 @@ If you have any suggestions for this crate, let me know! If something is not cle
     }
 
     fn main() {
-        let mut net_msg = Builder::init().start_automatic::<JSON>();
-
+        let mut net_msg = Builder::init().start::<JSON>().unwrap(); 
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:39507")).unwrap();
-
+    
         thread::sleep(time::Duration::from_millis(100));
 
         net_msg.get::<UpdatePos>().unwrap();
