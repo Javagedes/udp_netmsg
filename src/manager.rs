@@ -95,8 +95,16 @@ impl Builder {
         return self;
     }
 
-    /// Pushes all settings to the UDP Manager and starts the background thread. 
-    /// Returns the UdpManager to the program.
+    /// Creates and starts the UDP Manager
+    /// 
+    /// Uses the configurations set with the builder struct to initialize and start the UDP Manager.
+    /// Specifies the SerDes format for data. Spins up the background thread that continiously checks 
+    /// for datagrams
+    /// 
+    /// # Errors
+    /// 
+    /// Errors if configurations to the underlying UDP Socket fail or if it was unable to create the 
+    /// new thread at the OS level.
     pub fn start<T: SerDesType>(self)->Result<UdpManager<T>, std::io::Error> {
         let len = self.buffer_len;
         let mut manager = UdpManager::<T>::init(self)?;
@@ -190,18 +198,20 @@ impl <T: SerDesType>UdpManager<T> {
         self.thread.take().map(thread::JoinHandle::join);
     }
 
-    /// Tries to receive a Datagram from the socket. If no datagram is available, will either return, or sit and wait
-    /// depending on if the underlying UDPSocket was set to non_blocking or not.
+    /// Attempts to receive a datagram from the underyling socket. 
+    /// 
+    /// Attempts to receive a datagram from the underlying socket and remove it from the queue.
+    /// If no datagram is available, it will either return, or sit and wait depending on if the 
+    /// the value of non_blocking, set with the Builder struct.
     /// 
     /// # Errors
     /// 
-    /// This will not error out of the method, but will print the error to the command line. Errors
-    /// when the there is an issue receiving data from the underyling socket. 
+    /// Errors when the there is an issue receiving data from the underyling socket. 
+    /// Does not return an error, prints the error to the command line.
     /// 
     /// # Panics
     /// 
-    /// This will panic if the lock becomes poisioned. Stops the thread, not the program however
-    /// the main thread will probably panic when trying to access the same poisioned lock.
+    /// This will panic if the lock becomes poisioned.
     fn try_recv(udp: Arc<UdpSocket>, msg_map: Arc<MsgStorage>, buffer_len: usize) {
         let mut buffer: Vec<u8> = vec![0; buffer_len];
 
@@ -222,12 +232,16 @@ impl <T: SerDesType>UdpManager<T> {
         msg_map.add_msg(id, addr, buffer);
     }
 
-    /// Provides the user with the oldest datagram of the specified type, if one exists. Otherwise
-    /// returns None. Provides the deserialized object and the return address to the user.
+    /// Provides the oldest datagram of the specified type, if one exists. 
+    /// 
+    /// Attempts to retrieve the serialized object from the underlying storage depending
+    /// on the requested data type. If a serialized object is available, it is removed from
+    /// the underyling storage and and attempt to deserialize the data is made. If successful,
+    /// the deserialized object is returned to the user.
     /// 
     /// # Errors
     /// 
-    /// Returns error when the vector is empty or the data could not be deserialized.
+    /// Returns error when the underlying storage is empty or the data could not be deserialized.
     /// 
     /// # Panics
     /// 
@@ -238,14 +252,16 @@ impl <T: SerDesType>UdpManager<T> {
         return self.msg_map.get_obj::<T,J>();
     }
 
-    /// Gets all objects of the requested type
+    /// Provides all datagrams of the specified type, if any exist.
     /// 
-    /// Drains the vector containing the serialized objects. Deserializes each object
-    /// and returns a vector containing the return SocketAddr and the object.
+    /// Attempts to retrieve all serialized objects from the underlying storage depending
+    /// on the requested data type. If objects are available, they are removed from
+    /// the underyling storage and and attempt to deserialize the data is made. If successful,
+    /// the deserialized objects are returned to the user in the form of a Vector.
     /// 
     /// # Errors
     /// 
-    /// Returns an error when the vector is empty or the data could not be deserialized
+    /// Returns an error when the underlying storage is empty or the data could not be deserialized
     /// 
     /// # Panics
     /// 
@@ -256,12 +272,37 @@ impl <T: SerDesType>UdpManager<T> {
         return self.msg_map.get_obj_all::<T,J>();
     }
 
+    /// Provides the oldest datagram of the specified type, if one exists, without
+    /// removing it from the underlying storage.
+    /// 
+    /// Attempts to retrieve the serialized object from the underlying storage depending
+    /// on the requested data type. If a serialized object is available, a copy is taken and
+    /// an attempt to deserialize the data is made. If successful, the deserialized object is 
+    /// returned to the user.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns error when the underlying storage is empty or the data could not be deserialized.
+    /// 
+    /// # Panics
+    /// 
+    /// This will panic if the lock becomes poisioned.
+    pub fn peek<J>(&self)->Result<(SocketAddr, J), std::io::Error>
+        where J: de::DeserializeOwned + 'static
+    {
+        return self.msg_map.peek::<T,J>();
+    }
+
     /// Deserializes the datagram, appends the ID, and sends to requested location.
+    /// 
+    /// Consumes a datagram and a destination address for the datagram to be sent to.
+    /// An attempt to serialize the data is made; The datagram ID is prepended to the
+    /// message and a request to the underlying UDP socket is made to send the data.
     /// 
     /// # Errors
     /// 
     /// Returns an error when the data could not be serialized or when the underyling 
-    /// failed to send the message.
+    /// UDP socket failed to send the message.
     /// 
     /// # Panics
     /// 
@@ -285,6 +326,11 @@ impl <T: SerDesType>UdpManager<T> {
     }
 
     /// Allows the header id of a particular struct to be specified rather than be automatically generated.
+    /// 
+    /// Generally, the struct ID is automatically created using a hash of the TypeID. This method allows
+    /// the struct id to be set by the user. This should be called before any attempt to send or receive
+    /// a datagram is made. This is commonly used if interacting with a socket that does not use this crate
+    /// and is expecting a specific ID for the type of message you are sending.
     /// 
     /// # Panics
     /// 
@@ -317,6 +363,30 @@ impl MsgStorage {
                         match T::deserial(&vec){
                             Ok(obj) => {
                                 return Ok((addr, obj))
+                            },
+                            Err(_) => return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not be deserialized"))
+                        }
+                    },
+                    None => return Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+                }
+            },
+            None => Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+        }
+    }
+
+    fn peek<T, J>(&self)->Result<(SocketAddr, J), std::io::Error> 
+        where T: SerDesType, J: de::DeserializeOwned + 'static
+    {
+        let id = self.get_id::<J>();
+        let mut msgs = self.msgs.lock().unwrap();
+
+        match msgs.get_mut(&id) {
+            Some(vec) => {
+                match vec.front() {
+                    Some((addr, vec)) => {
+                        match T::deserial(&vec){
+                            Ok(obj) => {
+                                return Ok((*addr, obj))
                             },
                             Err(_) => return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not be deserialized"))
                         }

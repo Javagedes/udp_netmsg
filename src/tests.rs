@@ -85,5 +85,25 @@ mod struct_creation {
 
         assert_eq!(net_msg.get_all::<UpdatePos>().unwrap().len(), 3);
     }
+
+    #[test]
+    fn peek() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50004"))
+            .start::<YAML>()
+            .unwrap(); 
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50004")).unwrap();
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50004")).unwrap();
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50004")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.peek::<UpdatePos>().unwrap();
+
+        assert_eq!(net_msg.get_all::<UpdatePos>().unwrap().len(), 3);
+    }
 }
 
