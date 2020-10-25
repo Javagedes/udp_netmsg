@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod struct_creation {
     use crate::serdes::JSON;
-    use crate::managers::Builder;
-    use crate::managers::manual::Datagram;
+    use crate::manager::Builder;
     use serde::{Serialize, Deserialize};
     use std::{thread, time};
 
@@ -13,15 +12,11 @@ mod struct_creation {
         pub z: f32
     }
 
-    impl Datagram for UpdatePos {
-        fn header()->u32 {return 834227670}
-    }
-
     #[test]
     fn test_manual() {
-        let mut net_msg = Builder::init().start_manuel::<JSON>();
+        let mut net_msg = Builder::init().start::<JSON>();
 
-        net_msg.register(UpdatePos::header());
+        net_msg.set_id::<UpdatePos>(505550550);
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:39507")).unwrap();
 
@@ -34,7 +29,7 @@ mod struct_creation {
     fn test_automatic() {
         let mut net_msg = Builder::init()
             .socket(String::from("0.0.0.0:50000"))
-            .start_automatic::<JSON>();  
+            .start::<JSON>();  
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50000")).unwrap();
     

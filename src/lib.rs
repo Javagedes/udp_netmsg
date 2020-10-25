@@ -2,11 +2,11 @@
 pub mod serdes;
 
 ///UDP Manager and associated Methods
-pub mod managers;
+pub mod manager;
 
 //Convenience re-export of common members
 pub mod prelude;
 
-mod threadsafe;
+mod util;
 mod tests;
 

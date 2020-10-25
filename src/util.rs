@@ -20,3 +20,4 @@ impl <T>ThreadSafe<T> {
         return ThreadSafe{obj: Arc::from(Mutex::from(obj))}
     }
 }
+
