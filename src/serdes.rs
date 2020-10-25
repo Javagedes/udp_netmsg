@@ -5,7 +5,7 @@ use serde_yaml;
 
 
 
-/// Implemented on empty struct when creating a new SerDes format (JSON, etc.)
+/// Implemented on an empty struct when creating a new SerDes format (JSON, Bincode, etc.)
 pub trait SerDesType {
     type Error;
 
@@ -14,7 +14,7 @@ pub trait SerDesType {
     fn deserial<T: DeserializeOwned>(v: &'_ [u8]) -> Result<T, Self::Error>;
 }
 
-/// Convenience struct for SerDes operations using the JSON format
+/// Convenience struct for SerDes Operations using the JSON format
 pub struct JSON;
 impl SerDesType for JSON {
     type Error = serde_json::Error;
