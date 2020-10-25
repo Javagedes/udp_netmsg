@@ -60,8 +60,11 @@ impl Builder {
     /// 
     /// Setting this to false means that sent and received datagrams will not have headers attached.
     /// Because of this, received datagrams will not be sorted according to header types.
-    /// Using the get method of the UDP Manager will attempt to deserialize the oldest datagram to that 
-    /// type and is much more likely to return an error.
+    /// 
+    /// It is suggested to use the peek and remove method in conjunction when setting ids to false. This
+    /// is because using the get method will remove the object even if it fails to deserialize. Using the 
+    /// peek method allows you to attempt to deserialize the object multiple times. Once it has succeeded,
+    /// you can then call the remove method to remove the object from the underyling storage.
     /// 
     /// # Default value
     /// 
@@ -265,9 +268,9 @@ impl <T: SerDesType>UdpManager<T> {
     /// Provides the oldest datagram of the specified type, if one exists. 
     /// 
     /// Attempts to retrieve the serialized object from the underlying storage depending
-    /// on the requested data type. If a serialized object is available, it is removed from
-    /// the underyling storage and and attempt to deserialize the data is made. If successful,
-    /// the deserialized object is returned to the user.
+    /// on the requested data type. The serialized object is removed (if one exists) 
+    /// from the underyling storage regardless of deserialization success.
+    /// The deserialized object is returned to the user, if deserialization is successful
     /// 
     /// # Errors
     /// 
@@ -285,13 +288,14 @@ impl <T: SerDesType>UdpManager<T> {
     /// Provides all datagrams of the specified type, if any exist.
     /// 
     /// Attempts to retrieve all serialized objects from the underlying storage depending
-    /// on the requested data type. If objects are available, they are removed from
-    /// the underyling storage and and attempt to deserialize the data is made. If successful,
-    /// the deserialized objects are returned to the user in the form of a Vector.
+    /// on the requested data type. If storage for the object exists, it will attempt to 
+    /// deserialize any datagrams that exist. If deserialization fails, the datagram is lost.
+    /// It will return an empty vector as long as the underlying storage existed.
     /// 
     /// # Errors
     /// 
-    /// Returns an error when the underlying storage is empty or the data could not be deserialized
+    /// Returns an error when the underlying does not exist (different than being empty) or the 
+    /// data could not be deserialized
     /// 
     /// # Panics
     /// 
@@ -323,11 +327,47 @@ impl <T: SerDesType>UdpManager<T> {
         return self.msg_map.peek::<T,J>(self.use_ids);
     }
 
+    /// Removes the oldest datagram of the specified type, if one exists, without providing
+    /// it to the user.
+    /// 
+    /// if use_ids is set false, it will remove the oldest datagram and the specified type is ignored.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns error when the underlying storage does not exist.
+    /// 
+    /// # Panics
+    /// 
+    /// This will panic if the lock becomes poisioned.
+    pub fn remove_front<J>(&self)->Result<(), std::io::Error>
+        where J: de::DeserializeOwned + 'static
+    {
+        return self.msg_map.remove_front::<T, J>(self.use_ids);
+    }
+
+    /// Removes all datagram of the specified type, if one exists, without providing
+    /// it to the user.
+    /// 
+    /// if use_ids is set false, it will remove all datagram and the specified type is ignored.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns error when the underlying storage does not exist.
+    /// 
+    /// # Panics
+    /// 
+    /// This will panic if the lock becomes poisioned.
+    pub fn remove_all<J>(&self) -> Result<(), std::io::Error>
+        where T: SerDesType, J: de::DeserializeOwned + 'static
+    {
+        return self.msg_map.remove_all::<T, J>(self.use_ids);
+    }
+
     /// Deserializes the datagram, appends the ID, and sends to requested location.
     /// 
     /// Consumes a datagram and a destination address for the datagram to be sent to.
-    /// An attempt to serialize the data is made; The datagram ID is prepended to the
-    /// message and a request to the underlying UDP socket is made to send the data.
+    /// An attempt to serialize the data is made; If use_id is true, the datagram ID is prepended 
+    /// to the message. A request to the underlying UDP socket is then made to send the data.
     /// 
     /// # Errors
     /// 
@@ -390,14 +430,16 @@ impl MsgStorage {
         let mut msgs = self.msgs.lock().unwrap();
 
         match msgs.get_mut(&id) {
-            Some(vec) => {
-                match vec.pop_front() {
-                    Some((addr, vec)) => {
-                        match T::deserial(&vec){
+            Some(msg_type_vec) => {
+                match msg_type_vec.pop_front() {
+                    Some((addr, msg_vec)) => {
+                        match T::deserial(&msg_vec){
                             Ok(obj) => {
                                 return Ok((addr, obj))
                             },
-                            Err(_) => return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not be deserialized"))
+                            Err(_) => {
+                                return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not be deserialized"))
+                            }
                         }
                     },
                     None => return Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
@@ -435,6 +477,45 @@ impl MsgStorage {
         }
     }
 
+    fn remove_front<T, J>(&self, use_ids: bool) -> Result<(), std::io::Error>
+        where T: SerDesType, J: de::DeserializeOwned + 'static
+    {
+        let mut id = 1;
+        if use_ids {
+            id = self.get_id::<J>();
+        }
+
+        let mut msgs = self.msgs.lock().unwrap();
+
+        match msgs.get_mut(&id) {
+            Some(vec) => {
+                match vec.pop_front() {
+                    Some(_) => {return Ok(())},
+                    None => return Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+                }
+            },
+            None => Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+        }
+    }
+
+    fn remove_all<T, J>(&self, use_ids: bool) -> Result<(), std::io::Error>
+        where T: SerDesType, J: de::DeserializeOwned + 'static
+    {
+        let mut id = 1;
+        if use_ids {
+            id = self.get_id::<J>();
+        }
+        let mut msgs = self.msgs.lock().unwrap();
+
+        match msgs.get_mut(&id) {
+            Some(vec) => {
+                vec.drain(..);
+                return Ok(());    
+            }
+            None => Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
+        }
+    }
+
     fn get_obj_all<T, J>(&self, use_ids: bool) -> Result<Vec<(SocketAddr, J)>, std::io::Error>
         where T: SerDesType, J: de::DeserializeOwned + 'static
     {
@@ -458,10 +539,7 @@ impl MsgStorage {
                         }  
                     })
                     .collect();
-                
-                    if x.len() > 0 {return Ok(x)}
-                    return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not Deserialize the data"))
-                
+                    return Ok(x)       
             }
             None => Err(std::io::Error::new(ErrorKind::NotFound, "Empty Vector"))
         }

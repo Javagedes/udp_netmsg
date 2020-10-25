@@ -148,10 +148,10 @@ mod struct_creation {
     #[should_panic]
     fn no_ids_panic() {
         let mut net_msg = Builder::init()
-        .socket(String::from("0.0.0.0:50006"))
-        .use_ids(false)
-        .start::<JSON>()
-        .unwrap(); 
+            .socket(String::from("0.0.0.0:50006"))
+            .use_ids(false)
+            .start::<JSON>()
+            .unwrap(); 
 
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50006")).unwrap();
@@ -161,6 +161,71 @@ mod struct_creation {
         thread::sleep(time::Duration::from_millis(100));
 
         net_msg.get::<RenameObj>().unwrap();
+    }
+
+    #[test]
+    fn fail_des_keep_item() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50007"))
+            .use_ids(false)
+            .start::<JSON>()
+            .unwrap(); 
+
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50007")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        match net_msg.peek::<RenameObj>() {
+            Ok(_) => panic!("Should not have serialized correctly"),
+            Err(_) => {}
+        }
+
+        net_msg.peek::<UpdatePos>().unwrap();
+    }
+
+    #[test]
+    fn remove_front() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50008"))
+            .use_ids(false)
+            .start::<JSON>()
+            .unwrap(); 
+
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50008")).unwrap();
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50008")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        match net_msg.peek::<RenameObj>() {
+            Ok(_) => panic!("Should not have serialized correctly"),
+            Err(_) => {}
+        }
+        net_msg.remove_front::<RenameObj>().unwrap();
+        net_msg.peek::<RenameObj>().unwrap();
+    }
+
+    #[test]
+    fn remove_all() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50009"))
+            .start::<YAML>()
+            .unwrap(); 
+
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50009")).unwrap();
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50009")).unwrap();
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50009")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.remove_all::<UpdatePos>().unwrap();
+
+        assert_eq!(net_msg.get_all::<UpdatePos>().unwrap().len(), 0);
     }
 }
 
