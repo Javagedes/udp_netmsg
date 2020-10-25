@@ -19,6 +19,7 @@ pub struct Builder {
     socket: String,
     non_blocking: bool,
     read_timeout: Option<std::time::Duration>,
+    use_ids: bool,
 }
 
 impl Builder {  
@@ -29,15 +30,19 @@ impl Builder {
         let socket = String::from("0.0.0.0:39507");
         let read_timeout = None;
         let non_blocking = true;
+        let use_ids = true;
 
         return Builder {
             buffer_len,
             socket,
             read_timeout,
             non_blocking,
+            use_ids
         }
     }
 
+    /// Sets the buffer_len
+    /// 
     /// Sets the buffer_len. The closer the this value is to the size of datagrams, 
     /// the faster the execution. This is because less time is spent reallocating 
     /// memory when the buffer size needs to be increased. To large of a buffer
@@ -48,6 +53,21 @@ impl Builder {
     /// 100 bytes
     pub fn buffer_len(mut self, len: usize) -> Builder {
         self.buffer_len = len;
+        return self;
+    }
+
+    /// Determines if ids are appended to the datagram
+    /// 
+    /// Setting this to false means that sent and received datagrams will not have headers attached.
+    /// Because of this, received datagrams will not be sorted according to header types.
+    /// Using the get method of the UDP Manager will attempt to deserialize the oldest datagram to that 
+    /// type and is much more likely to return an error.
+    /// 
+    /// # Default value
+    /// 
+    /// true
+    pub fn use_ids(mut self, use_ids: bool) -> Builder {
+        self.use_ids = use_ids;
         return self;
     }
 
@@ -128,6 +148,8 @@ pub struct UdpManager<T: SerDesType> {
     stop: ThreadSafe<bool>,
 
     thread: Option<thread::JoinHandle<()>>,
+
+    use_ids: bool
 }
 
 /// Allows the background thread to safely shutdown when the struct loses scope or program performs a shutdown.
@@ -148,10 +170,11 @@ impl <T: SerDesType>UdpManager<T> {
     /// the underlying udp socket.
     fn init<K: SerDesType>(builder: Builder)->Result<UdpManager<K>, std::io::Error> {
 
-        let socket = builder.socket;
-        let read_timeout = builder.read_timeout;
+        let socket        = builder.socket;
+        let read_timeout  = builder.read_timeout;
+        let non_blocking  = builder.non_blocking;
+        let use_ids       = builder.use_ids;
         let resource_type = PhantomData;
-        let non_blocking = builder.non_blocking;
 
         let udp: UdpSocket = UdpSocket::bind(socket)?;
         let udp = Arc::from(udp);
@@ -166,7 +189,8 @@ impl <T: SerDesType>UdpManager<T> {
             stop: ThreadSafe::from(false),
             thread: None,
             resource_type,
-            msg_map
+            msg_map,
+            use_ids
         })
     }
 
@@ -180,12 +204,13 @@ impl <T: SerDesType>UdpManager<T> {
         let udp = self.udp.clone();
         let msg_map = self.msg_map.clone();
         let stop = self.stop.clone();
+        let use_ids = self.use_ids.clone();
 
         let thread = thread::Builder::new()
             .name(String::from("thread_udp_listener"))
             .spawn( move || {
                 while *stop.lock().unwrap() == false {
-                    Self::try_recv(udp.clone(), msg_map.clone(), buffer_len);
+                    Self::try_recv(udp.clone(), msg_map.clone(), buffer_len, use_ids.clone());
             }})?;
 
         self.thread = Some(thread);
@@ -212,7 +237,7 @@ impl <T: SerDesType>UdpManager<T> {
     /// # Panics
     /// 
     /// This will panic if the lock becomes poisioned.
-    fn try_recv(udp: Arc<UdpSocket>, msg_map: Arc<MsgStorage>, buffer_len: usize) {
+    fn try_recv(udp: Arc<UdpSocket>, msg_map: Arc<MsgStorage>, buffer_len: usize, use_ids: bool) {
         let mut buffer: Vec<u8> = vec![0; buffer_len];
 
         let (num_bytes, addr) =  match udp.recv_from(&mut buffer) {
@@ -226,10 +251,15 @@ impl <T: SerDesType>UdpManager<T> {
         };
 
         buffer.truncate(num_bytes);
-        let id: Vec<_> = buffer.drain(..8).collect();
-        let id = BigEndian::read_u64(&id);
-
-        msg_map.add_msg(id, addr, buffer);
+        
+        if use_ids {
+            let id: Vec<_> = buffer.drain(..8).collect();
+            let id = BigEndian::read_u64(&id);
+            msg_map.add_msg(id, addr, buffer);
+        }
+        else {
+            msg_map.add_msg(1, addr, buffer);
+        }   
     }
 
     /// Provides the oldest datagram of the specified type, if one exists. 
@@ -249,7 +279,7 @@ impl <T: SerDesType>UdpManager<T> {
     pub fn get<J>(&self)->Result<(SocketAddr, J), std::io::Error>
         where J: de::DeserializeOwned + 'static
     {
-        return self.msg_map.get_obj::<T,J>();
+        return self.msg_map.get_obj::<T,J>(self.use_ids);
     }
 
     /// Provides all datagrams of the specified type, if any exist.
@@ -269,7 +299,7 @@ impl <T: SerDesType>UdpManager<T> {
     pub fn get_all<J>(&self)->Result<Vec<(std::net::SocketAddr, J)>, std::io::Error>
         where J: de::DeserializeOwned + 'static
     {
-        return self.msg_map.get_obj_all::<T,J>();
+        return self.msg_map.get_obj_all::<T,J>(self.use_ids);
     }
 
     /// Provides the oldest datagram of the specified type, if one exists, without
@@ -290,7 +320,7 @@ impl <T: SerDesType>UdpManager<T> {
     pub fn peek<J>(&self)->Result<(SocketAddr, J), std::io::Error>
         where J: de::DeserializeOwned + 'static
     {
-        return self.msg_map.peek::<T,J>();
+        return self.msg_map.peek::<T,J>(self.use_ids);
     }
 
     /// Deserializes the datagram, appends the ID, and sends to requested location.
@@ -315,9 +345,10 @@ impl <T: SerDesType>UdpManager<T> {
             Err(_) => return Err(std::io::Error::new(ErrorKind::InvalidData, "Could not serialize"))
         };
 
-        let id = self.msg_map.get_id::<J>();
-
-        wtr.write_u64::<BigEndian>(id)?;
+        if self.use_ids {
+            let id = self.msg_map.get_id::<J>();
+            wtr.write_u64::<BigEndian>(id)?;
+        }
         wtr.append(&mut payload);
 
         self.udp.send_to(&wtr, dest_addr)?;
@@ -349,11 +380,13 @@ struct MsgStorage {
 #[doc(hidden)]
 impl MsgStorage {
     
-    fn get_obj<T, J>(&self)->Result<(SocketAddr, J), std::io::Error> 
+    fn get_obj<T, J>(&self, use_ids: bool)->Result<(SocketAddr, J), std::io::Error> 
         where T: SerDesType, J: de::DeserializeOwned + 'static
     {
-        
-        let id = self.get_id::<J>();
+        let mut id = 1;
+        if use_ids {
+            id = self.get_id::<J>();
+        }
         let mut msgs = self.msgs.lock().unwrap();
 
         match msgs.get_mut(&id) {
@@ -374,10 +407,14 @@ impl MsgStorage {
         }
     }
 
-    fn peek<T, J>(&self)->Result<(SocketAddr, J), std::io::Error> 
+    fn peek<T, J>(&self, use_ids: bool)->Result<(SocketAddr, J), std::io::Error> 
         where T: SerDesType, J: de::DeserializeOwned + 'static
     {
-        let id = self.get_id::<J>();
+        let mut id = 1;
+        if use_ids {
+            id = self.get_id::<J>();
+        }
+
         let mut msgs = self.msgs.lock().unwrap();
 
         match msgs.get_mut(&id) {
@@ -398,10 +435,13 @@ impl MsgStorage {
         }
     }
 
-    fn get_obj_all<T, J>(&self) -> Result<Vec<(SocketAddr, J)>, std::io::Error>
+    fn get_obj_all<T, J>(&self, use_ids: bool) -> Result<Vec<(SocketAddr, J)>, std::io::Error>
         where T: SerDesType, J: de::DeserializeOwned + 'static
     {
-        let id = self.get_id::<J>();
+        let mut id = 1;
+        if use_ids {
+            id = self.get_id::<J>();
+        }
         let mut msgs = self.msgs.lock().unwrap();
 
         match msgs.get_mut(&id) {

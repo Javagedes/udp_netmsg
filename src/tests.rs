@@ -12,14 +12,21 @@ mod struct_creation {
         pub z: f32
     }
 
+    #[derive(Serialize, Deserialize)]
+    struct RenameObj {
+        pub name: String
+    }
+
     #[test]
     fn test_manual() {
         let mut net_msg = Builder::init().start::<JSON>().unwrap();
 
         net_msg.set_id::<UpdatePos>(505550550);
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:39507")).unwrap();
         net_msg.send(pos, String::from("127.0.0.1:39507")).unwrap();
-
+        
         thread::sleep(time::Duration::from_millis(100));
 
         net_msg.get::<UpdatePos>().unwrap();
@@ -31,6 +38,9 @@ mod struct_creation {
             .socket(String::from("0.0.0.0:50000"))
             .start::<JSON>()
             .unwrap(); 
+
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50000")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50000")).unwrap();
     
@@ -45,6 +55,9 @@ mod struct_creation {
             .socket(String::from("0.0.0.0:50001"))
             .start::<Bincode>()
             .unwrap(); 
+
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50001")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50001")).unwrap();
     
@@ -60,6 +73,9 @@ mod struct_creation {
             .socket(String::from("0.0.0.0:50002"))
             .start::<YAML>()
             .unwrap(); 
+
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50002")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50002")).unwrap();
 
@@ -74,6 +90,9 @@ mod struct_creation {
             .socket(String::from("0.0.0.0:50003"))
             .start::<YAML>()
             .unwrap(); 
+
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50003")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50003")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
@@ -92,6 +111,9 @@ mod struct_creation {
             .socket(String::from("0.0.0.0:50004"))
             .start::<YAML>()
             .unwrap(); 
+
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50004")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50004")).unwrap();
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
@@ -104,6 +126,41 @@ mod struct_creation {
         net_msg.peek::<UpdatePos>().unwrap();
 
         assert_eq!(net_msg.get_all::<UpdatePos>().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn no_ids_succeed() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50005"))
+            .use_ids(false)
+            .start::<JSON>()
+            .unwrap(); 
+
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50005")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.get::<RenameObj>().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn no_ids_panic() {
+        let mut net_msg = Builder::init()
+        .socket(String::from("0.0.0.0:50006"))
+        .use_ids(false)
+        .start::<JSON>()
+        .unwrap(); 
+
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50006")).unwrap();
+        let name = RenameObj{name: String::from("Billy")};
+        net_msg.send(name, String::from("127.0.0.1:50006")).unwrap();
+
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.get::<RenameObj>().unwrap();
     }
 }
 
