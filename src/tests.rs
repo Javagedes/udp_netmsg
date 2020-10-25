@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod struct_creation {
     use crate::prelude::*;
+    use crate::serdes::{Bincode, YAML};
     use serde::{Serialize, Deserialize};
     use std::{thread, time};
 
@@ -33,6 +34,35 @@ mod struct_creation {
         let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
         net_msg.send(pos, String::from("127.0.0.1:50000")).unwrap();
     
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.get::<UpdatePos>().unwrap();
+    }
+
+    #[test]
+    fn test_bincode() {
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50001"))
+            .start::<Bincode>()
+            .unwrap(); 
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50001")).unwrap();
+    
+        thread::sleep(time::Duration::from_millis(100));
+
+        net_msg.get::<UpdatePos>().unwrap();
+    }
+
+    #[test]
+    fn test_yaml() {
+        
+        let mut net_msg = Builder::init()
+            .socket(String::from("0.0.0.0:50002"))
+            .start::<YAML>()
+            .unwrap(); 
+        let pos = UpdatePos{x: 15f32, y: 15f32, z: 15f32};
+        net_msg.send(pos, String::from("127.0.0.1:50002")).unwrap();
+
         thread::sleep(time::Duration::from_millis(100));
 
         net_msg.get::<UpdatePos>().unwrap();

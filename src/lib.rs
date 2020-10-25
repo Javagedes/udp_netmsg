@@ -7,11 +7,15 @@
 //! ## Formats
 //!    
 //! This crate supports any data format that is also supported by Serde. Not all
-//! formats are implemented by this crate, but they can be implemented by the user
-//! via the SerDesType trait.
+//! formats are implemented by this crate to reduce the size however they can be implemented by the user
+//! via the SerDesType trait. See examples of the implementations [here]
+//! 
+//! [here]: https://github.com/Javagedes/udp_netmsg/blob/master/src/serdes.rs
 //! 
 //! Convenience Implementations:
 //! - JSON
+//! - Bincode
+//! - YAML
 //! 
 
 
