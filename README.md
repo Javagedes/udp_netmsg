@@ -15,7 +15,8 @@ and implementing a trait.
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
 as it uses a vector as a buffer. In my light testing, sending/receiving max size udp datagrams
 (65k bytes), it is about 30% slower than if you were to use an array.
-If you have suggestions or questions for this crate, raise an [issue](https://github.com/Javagedes/udp_netmsg/issues)!
+
+**If you have suggestions or questions for this crate, raise an [issue](https://github.com/Javagedes/udp_netmsg/issues)!**
 
 ### Example
 ```rust
