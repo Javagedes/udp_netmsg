@@ -10,7 +10,7 @@ and implementing a trait.
 - All methods are &self making it easy to use in a multi-threaded situation. Handles interior mutability with locks.
 - Relies on Serde for Serialization and Deserialization.
 - Can Serialize/Deserialize any struct that implements Serde's Serialization & Deserialization traits.
-- Any format that is implemented for Serde works for this crate. For convenience, JSON, Bincode, and YAML are implemented within the crate (It's simple to implement others, see examples [here](https://github.com/Javagedes/udp_netmsg/blob/master/src/serdes.rs).
+- Any format that is implemented for Serde works for this crate. For convenience, JSON, Bincode, and YAML are implemented within the crate (It's simple to implement others, see examples [here](https://github.com/Javagedes/udp_netmsg/blob/master/src/serdes.rs)).
 - Runs a listener on a second thread that listens for incoming Udp Messages.
 - This crate is not for you if you are receiving or sending extremely large udp datagrams
 as it uses a vector as a buffer. In my light testing, sending/receiving max size udp datagrams
@@ -40,8 +40,4 @@ If you have suggestions or questions for this crate, raise an [issue](https://gi
         net_msg.get::<UpdatePos>().unwrap();
     }
 ```
-
-### To do 
-- [ ] Split up the sending and receiving part of the socket so I don't have to lock the whole thing and makes responses slower
-- [ ] Maybe? add functionality to just get the most recently received net message for when message order (of different structs) matter. 
-- [ ] Change the way messages are stored so that user can chose to either get the next message in time received or get it by message type. Issue with providing the data to the user. We can store it as just a long vec of (u32,SocketAddr, Vec<u8>). Then we can get them in order or filter them With maybe a map that only returns the correct ones based off the u32 identifier.
+More examples found [here](https://github.com/Javagedes/udp_netmsg/tree/master/examples).
